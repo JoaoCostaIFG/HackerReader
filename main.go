@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/golang-collections/collections/stack"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -19,6 +20,7 @@ import (
 const apiurl = "https://hacker-news.firebaseio.com/v0"
 const listSize = 5
 const loadBacklogSize = 10
+const rootStoryId = -1
 
 type story struct {
 	id          int // -1 when not loaded
@@ -40,17 +42,25 @@ type story struct {
 type model struct {
 	stories    map[int]story
 	cursor     int
-	topstories []int
-	state      int // 0 - loading; 1 - inited; 2 - in story
-	selected   int
+	prevCursor stack.Stack
+	selected   stack.Stack
 }
 
 func initialModel() model {
-	return model{
+	initModel := model{
 		stories:    make(map[int]story),
-		topstories: []int{},
-		state:      0,
+		cursor:     0,
+		prevCursor: stack.Stack{},
+		selected:   stack.Stack{},
 	}
+	// add root "story" => top stories are its children
+	initModel.stories[rootStoryId] = story{
+		id:          rootStoryId,
+		descendants: 0,
+		kids:        []int{},
+	}
+	initModel.selected.Push(rootStoryId)
+	return initModel
 }
 
 type errMsg struct{ err error }
@@ -202,64 +212,69 @@ func fetchStory(item string) tea.Cmd {
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case errMsg:
+		fmt.Println(msg)
 		return m, tea.Quit
 	case topStoriesMsg:
-		m.topstories = msg.stories
+		rootStory := story{
+			id:          rootStoryId,
+			kids:        msg.stories,
+			descendants: len(msg.stories),
+		}
+		m.stories[rootStoryId] = rootStory
+
+		// load initial story batch
 		var batch [listSize]tea.Cmd
-		for i := 0; i < len(m.topstories) && i < listSize; i++ {
-			stId := m.topstories[i]
+		for i := 0; i < len(rootStory.kids) && i < listSize; i++ {
+			stId := rootStory.kids[i]
 			m.stories[stId] = story{id: -1}
 			batch[i] = fetchStory(strconv.Itoa(stId))
 		}
 		return m, tea.Batch(batch[:]...)
 	case story:
-		m.stories[msg.id] = msg
 		// we have a story => we're ready
-		m.state = 1
+		m.stories[msg.id] = msg
 	case tea.KeyMsg:
-		switch m.state {
-		case 1:
-			switch msg.String() {
-			case "ctrl+c", "q":
-				return m, tea.Quit
-			case "down", "j":
-				if m.cursor < len(m.topstories)-1 {
-					m.cursor++
-					// load missing stories
-					var batch []tea.Cmd
-					for i := m.cursor; i < len(m.topstories) && i < m.cursor+loadBacklogSize; i++ {
-						stId := m.topstories[i]
-						_, exists := m.stories[stId]
-						if !exists {
-							batch = append(batch, fetchStory(strconv.Itoa(stId)))
-						}
+		switch msg.String() {
+		case "ctrl+c", "q":
+			return m, tea.Quit
+		case "down", "j":
+			st, _ := m.stories[m.selected.Peek().(int)]
+			if m.cursor < len(st.kids)-1 {
+				m.cursor++
+				// load missing stories
+				var batch []tea.Cmd
+				for i := m.cursor; i < len(st.kids) && i < m.cursor+loadBacklogSize; i++ {
+					stId := st.kids[i]
+					_, exists := m.stories[stId]
+					if !exists {
+						batch = append(batch, fetchStory(strconv.Itoa(stId)))
 					}
-					return m, tea.Batch(batch...)
 				}
-			case "up", "k":
-				if m.cursor > 0 {
-					m.cursor--
-				}
-			case "enter", "right", "l":
-				m.selected = m.cursor
-				stId := m.topstories[m.selected]
-				st, exists := m.stories[stId]
-				if exists && st.id > 0 {
-					// loaded => we can go in
-					m.state = 2
-				}
+				return m, tea.Batch(batch...)
 			}
-		case 2:
-			switch msg.String() {
-			case "ctrl+c", "q":
-				return m, tea.Quit
-			case "left", "h":
-				m.state = 1
+		case "up", "k":
+			if m.cursor > 0 {
+				m.cursor--
 			}
-		default:
-			switch msg.String() {
-			case "ctrl+c", "q":
-				return m, tea.Quit
+		case "enter", "right", "l":
+			currSt, _ := m.stories[m.selected.Peek().(int)]
+
+			stId := currSt.kids[m.cursor]
+			st, exists := m.stories[stId]
+			if exists && st.id > 0 {
+				// loaded => we can go in
+				// save previous state for when we go back
+				m.prevCursor.Push(m.cursor)
+				m.selected.Push(stId)
+				// go in
+				m.cursor = 0
+			}
+		case "escape", "left", "h":
+			// recover previous state
+			if m.selected.Len() > 1 {
+				// we're nested (rootStory can't be popped)
+				m.cursor = m.prevCursor.Pop().(int)
+				m.selected.Pop()
 			}
 		}
 	}
@@ -271,13 +286,18 @@ func (m model) selectionScreen() string {
 	// The header
 	s := "HackerReader\n\n"
 
+	parentStory, exists := m.stories[m.selected.Peek().(int)]
+	if !exists {
+		return ""
+	}
+
 	// Iterate over stories
 	starti := m.cursor - 2
 	if starti < 0 {
 		starti = 0
 	}
-	for i := starti; i < len(m.topstories) && i < starti+listSize; i++ {
-		stId := m.topstories[i]
+	for i := starti; i < len(parentStory.kids) && i < starti+listSize; i++ {
+		stId := parentStory.kids[i]
 		st, exists := m.stories[stId]
 
 		cursor := " "
@@ -300,7 +320,7 @@ func (m model) selectionScreen() string {
 }
 
 func (m model) storyView() string {
-	stId := m.topstories[m.selected]
+	stId := m.selected.Peek().(int)
 	st, exists := m.stories[stId]
 	if !exists {
 		return ""
@@ -313,16 +333,12 @@ func (m model) storyView() string {
 }
 
 func (m model) View() string {
-	switch m.state {
-	case 0:
-		return "Still loading..."
-	case 1:
-		return m.selectionScreen()
-	case 2:
+	if m.selected.Len() > 1 {
+		// we're nested
 		return m.storyView()
-	default:
-		return ""
 	}
+	// we're at root
+	return m.selectionScreen()
 }
 
 func main() {
