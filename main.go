@@ -196,9 +196,15 @@ func fetchStory(item string) tea.Cmd {
 				v, _ := jsonparser.ParseInt(value)
 				data.descendants = int(v)
 			case 9:
-				// TODO
+				_, _ = jsonparser.ArrayEach(value, func(value []byte, dataType jsonparser.ValueType, offset int, err error) {
+					v, _ := jsonparser.ParseInt(value)
+					data.kids = append(data.kids, int(v))
+				})
 			case 10:
-				// TODO
+				_, _ = jsonparser.ArrayEach(value, func(value []byte, dataType jsonparser.ValueType, offset int, err error) {
+					v, _ := jsonparser.ParseInt(value)
+					data.parts = append(data.parts, int(v))
+				})
 			case 11:
 				v, _ := jsonparser.ParseInt(value)
 				data.poll = int(v)
@@ -257,17 +263,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "enter", "right", "l":
 			parentStory, _ := m.stories[m.selected.Peek().(int)]
-
-			stId := parentStory.kids[m.cursor]
-			st, exists := m.stories[stId]
-			if exists && st.id > 0 {
-				// loaded => we can go in
-				// save previous state for when we go back
-				m.prevCursor.Push(m.cursor)
-				m.selected.Push(stId)
-				// go in and load kids (if needed)
-				m.cursor = 0
-				return m, m.batchKidsFetch(st)
+			if len(parentStory.kids) > 0 {
+				// can only go in if there's kids
+				stId := parentStory.kids[m.cursor]
+				st, exists := m.stories[stId]
+				if exists && st.id > 0 {
+					// loaded => we can go in
+					// save previous state for when we go back
+					m.prevCursor.Push(m.cursor)
+					m.selected.Push(stId)
+					// go in and load kids (if needed)
+					m.cursor = 0
+					return m, m.batchKidsFetch(st)
+				}
 			}
 		case "escape", "left", "h":
 			// recover previous state
@@ -283,49 +291,75 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func storyView(st story, prefix string) string {
-	s := ""
 	if st.id < 0 {
 		// still loading/hasn't started loading
-		s += fmt.Sprintf("%s%s (%s)\n", prefix, "...", "...")
+		ret := fmt.Sprintf("%s%s (%s)\n", prefix, "...", "...")
 		for i := 0; i < len(prefix); i++ {
-			s += " "
+			ret += " "
 		}
-		s += fmt.Sprintf("%d points by %s %s | %d comments\n", 50, "...", "...", 0)
-	} else {
-		s += fmt.Sprintf("%s%s", prefix, st.title)
-		if len(st.domain) > 0 {
-			s += fmt.Sprintf(" (%s)", st.domain)
-		}
-		s += "\n"
-		for i := 0; i < len(prefix); i++ {
-			s += " "
-		}
-		s += fmt.Sprintf("%d points by %s %s | %d comments\n", st.score, st.by, st.timestr, st.descendants)
+		ret += fmt.Sprintf("%d points by %s %s | %d comments\n", 50, "...", "...", 0)
+		return ret
 	}
 
-	return s
+	switch st.storytype {
+	case "comment":
+		ret := fmt.Sprintf("%s%s %s\n", prefix, st.by, st.timestr)
+		for i := 0; i < len(prefix); i++ {
+			ret += " "
+		}
+		ret += st.text
+		return ret
+	default:
+		ret := fmt.Sprintf("%s%s", prefix, st.title)
+		if len(st.domain) > 0 {
+			ret += fmt.Sprintf(" (%s)", st.domain)
+		}
+		ret += "\n"
+		for i := 0; i < len(prefix); i++ {
+			ret += " "
+		}
+		ret += fmt.Sprintf("%d points by %s %s | %d comments", st.score, st.by, st.timestr, st.descendants)
+		return ret
+	}
 }
 
 func (m model) storyScreen() string {
-	stId := m.selected.Peek().(int)
-	st, exists := m.stories[stId]
+	parentStory, exists := m.stories[m.selected.Peek().(int)]
 	if !exists {
 		return ""
 	}
 
-	s := storyView(st, "")
+	s := storyView(parentStory, "")
+	s += "\n\n"
+
+	// Iterate over comments
+	starti := m.cursor - 2
+	if starti < 0 {
+		starti = 0
+	}
+	for i := starti; i < len(parentStory.kids) && i < starti+listSize; i++ {
+		stId := parentStory.kids[i]
+		st, _ := m.stories[stId]
+
+		cursor := " "
+		if m.cursor == i {
+			cursor = ">"
+		}
+		prefix := fmt.Sprintf("%s %d. ", cursor, i)
+		s += storyView(st, prefix) + "\n"
+	}
 
 	return s
 }
 
 func (m model) rootScreen() string {
 	// The header
-	s := "HackerReader\n\n"
-
 	parentStory, exists := m.stories[m.selected.Peek().(int)]
 	if !exists {
 		return ""
 	}
+
+	s := "HackerReader\n\n"
 
 	// Iterate over stories
 	starti := m.cursor - 2
@@ -341,7 +375,7 @@ func (m model) rootScreen() string {
 			cursor = ">"
 		}
 		prefix := fmt.Sprintf("%s %d. ", cursor, i)
-		s += storyView(st, prefix)
+		s += storyView(st, prefix) + "\n"
 	}
 
 	return s
