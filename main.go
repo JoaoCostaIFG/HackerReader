@@ -9,14 +9,13 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/buger/jsonparser"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/pkg/browser"
 )
 
 const apiurl = "https://hacker-news.firebaseio.com/v0"
@@ -297,16 +296,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			if len(targetStory.url) > 0 {
-				switch runtime.GOOS {
-				case "linux":
-					_ = exec.Command("xdg-open", targetStory.url).Start()
-				case "windows":
-					_ = exec.Command("rundll32", "url.dll,FileProtocolHandler", targetStory.url).Start()
-				case "darwin":
-					_ = exec.Command("open", targetStory.url).Start()
-				default:
-					// unsupported platform
-				}
+				_ = browser.OpenURL(targetStory.url)
 			}
 		}
 	}
