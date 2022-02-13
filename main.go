@@ -17,6 +17,8 @@ import (
 )
 
 const apiurl = "https://hacker-news.firebaseio.com/v0"
+const listSize = 5
+const loadBacklogSize = 10
 
 type story struct {
 	id          int // -1 when not loaded
@@ -203,8 +205,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case topStoriesMsg:
 		m.topstories = msg.stories
-		var batch [5]tea.Cmd
-		for i := 0; i < len(m.topstories) && i < 5; i++ {
+		var batch [listSize]tea.Cmd
+		for i := 0; i < len(m.topstories) && i < listSize; i++ {
 			stId := m.topstories[i]
 			m.stories[stId] = story{id: -1}
 			batch[i] = fetchStory(strconv.Itoa(stId))
@@ -225,7 +227,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.cursor++
 					// load missing stories
 					var batch []tea.Cmd
-					for i := m.cursor; i < len(m.topstories) && i < m.cursor+5; i++ {
+					for i := m.cursor; i < len(m.topstories) && i < m.cursor+loadBacklogSize; i++ {
 						stId := m.topstories[i]
 						_, exists := m.stories[stId]
 						if !exists {
@@ -274,7 +276,7 @@ func (m model) selectionScreen() string {
 	if starti < 0 {
 		starti = 0
 	}
-	for i := starti; i < len(m.topstories) && i < starti+5; i++ {
+	for i := starti; i < len(m.topstories) && i < starti+listSize; i++ {
 		stId := m.topstories[i]
 		st, exists := m.stories[stId]
 
