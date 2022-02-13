@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	md "github.com/JohannesKaufmann/html-to-markdown"
 	"github.com/buger/jsonparser"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/pkg/browser"
@@ -184,8 +185,13 @@ func fetchStory(item string) tea.Cmd {
 				data.title = v
 			case 5:
 				v, _ := jsonparser.ParseString(value)
-				data.text = html.UnescapeString(v)
-				data.text = strings.ReplaceAll(data.text, "<p>", "\n")
+				data.text, err = md.NewConverter("", true, nil).ConvertString(v)
+				if err != nil {
+					// fallback
+					data.text = html.UnescapeString(v)
+				} else {
+					data.text = strings.ReplaceAll(data.text, "\n\n", "\n")
+				}
 			case 6:
 				v, _ := jsonparser.ParseString(value)
 				data.url = v
@@ -240,6 +246,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		fmt.Println(msg)
 		return m, tea.Quit
 	case topStoriesMsg:
+		msg.stories[0] = 126809 // TODO remove this poll test
 		rootStory := story{
 			id:          rootStoryId,
 			kids:        msg.stories,
@@ -250,6 +257,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case story:
 		// we have a story => we're ready
 		m.stories[msg.id] = msg
+		if msg.storytype == "poll" {
+			var batch []tea.Cmd
+			for _, polloptId := range msg.parts {
+				pollopt, exists := m.stories[polloptId]
+				if !exists {
+					// set loading and start loading
+					pollopt.id = -1
+					m.stories[polloptId] = pollopt
+					batch = append(batch, fetchStory(strconv.Itoa(polloptId)))
+				}
+			}
+			return m, tea.Batch(batch...)
+		}
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
@@ -317,7 +337,43 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func storyView(st story, prefix string, forceShow bool) string {
+func (m model) mainItemView(st story) string {
+	if st.id < 0 {
+		// still loading/hasn't started loading => shouldn't happen but it doesn't hurt to check
+		ret := fmt.Sprintf("%s (%s)\n", "...", "...")
+		ret += fmt.Sprintf("%d points by %s %s | %d comments", 0, "...", "...", 0)
+		return ret
+	}
+
+	switch st.storytype {
+	case "comment":
+		ret := fmt.Sprintf("%s %s\n", st.by, st.timestr)
+		ret += st.text
+		return ret
+	case "poll":
+		ret := fmt.Sprintf("%s\n", st.title)
+		ret += fmt.Sprintf("%d points by %s %s | %d comments", st.score, st.by, st.timestr, st.descendants)
+		for i := 0; i < len(st.parts); i++ {
+			polloptId := st.parts[i]
+			pollopt := m.stories[polloptId]
+			ret += "\n" + listItemView(pollopt, " ")
+		}
+		return ret
+	default:
+		ret := fmt.Sprintf("%s", st.title)
+		if len(st.domain) > 0 {
+			ret += fmt.Sprintf(" (%s)", st.domain)
+		}
+		ret += "\n"
+		ret += fmt.Sprintf("%d points by %s %s | %d comments", st.score, st.by, st.timestr, st.descendants)
+		if len(st.text) > 0 {
+			ret += "\n" + st.text
+		}
+		return ret
+	}
+}
+
+func listItemView(st story, prefix string) string {
 	if st.id < 0 {
 		// still loading/hasn't started loading
 		ret := fmt.Sprintf("%s%s (%s)\n", prefix, "...", "...")
@@ -328,7 +384,7 @@ func storyView(st story, prefix string, forceShow bool) string {
 		return ret
 	}
 
-	if st.hidden && !forceShow {
+	if st.hidden {
 		// hidden post
 		ret := fmt.Sprintf("%s(hidden) %s %s", prefix, st.by, st.timestr)
 		return ret
@@ -344,6 +400,11 @@ func storyView(st story, prefix string, forceShow bool) string {
 		ret := fmt.Sprintf("%s%s %s\n", prefix, st.by, st.timestr)
 		ret += padding
 		ret += strings.ReplaceAll(st.text, "\n", "\n"+padding)
+		return ret
+	case "pollopt":
+		ret := prefix + st.text + "\n"
+		ret += padding
+		ret += fmt.Sprintf("%d points", st.score)
 		return ret
 	default:
 		ret := fmt.Sprintf("%s%s", prefix, st.title)
@@ -362,7 +423,7 @@ func (m model) storyScreen() string {
 		return ""
 	}
 
-	s := storyView(parentStory, "", true) + "\n\n"
+	s := m.mainItemView(parentStory) + "\n\n"
 
 	// Iterate over comments
 	starti := m.cursor - 2
@@ -378,7 +439,7 @@ func (m model) storyScreen() string {
 			cursor = ">"
 		}
 		prefix := fmt.Sprintf("%s %d. ", cursor, i)
-		s += storyView(st, prefix, false) + "\n"
+		s += listItemView(st, prefix) + "\n"
 	}
 
 	return s
@@ -407,7 +468,7 @@ func (m model) rootScreen() string {
 			cursor = ">"
 		}
 		prefix := fmt.Sprintf("%s %d. ", cursor, i)
-		s += storyView(st, prefix, false) + "\n"
+		s += listItemView(st, prefix) + "\n"
 	}
 
 	return s
