@@ -209,6 +209,21 @@ func fetchStory(item string) tea.Cmd {
 	}
 }
 
+func (m model) batchKidsFetch(st story) tea.Cmd {
+	var batch []tea.Cmd
+	for i := m.cursor; i < len(st.kids) && i < m.cursor+loadBacklogSize; i++ {
+		stId := st.kids[i]
+		loadSt, exists := m.stories[stId]
+		if !exists {
+			// set loading and start loading
+			loadSt.id = -1
+			m.stories[stId] = loadSt
+			batch = append(batch, fetchStory(strconv.Itoa(stId)))
+		}
+	}
+	return tea.Batch(batch...)
+}
+
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case errMsg:
@@ -221,15 +236,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			descendants: len(msg.stories),
 		}
 		m.stories[rootStoryId] = rootStory
-
-		// load initial story batch
-		var batch [listSize]tea.Cmd
-		for i := 0; i < len(rootStory.kids) && i < listSize; i++ {
-			stId := rootStory.kids[i]
-			m.stories[stId] = story{id: -1}
-			batch[i] = fetchStory(strconv.Itoa(stId))
-		}
-		return m, tea.Batch(batch[:]...)
+		return m, m.batchKidsFetch(rootStory)
 	case story:
 		// we have a story => we're ready
 		m.stories[msg.id] = msg
@@ -242,32 +249,25 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.cursor < len(st.kids)-1 {
 				m.cursor++
 				// load missing stories
-				var batch []tea.Cmd
-				for i := m.cursor; i < len(st.kids) && i < m.cursor+loadBacklogSize; i++ {
-					stId := st.kids[i]
-					_, exists := m.stories[stId]
-					if !exists {
-						batch = append(batch, fetchStory(strconv.Itoa(stId)))
-					}
-				}
-				return m, tea.Batch(batch...)
+				return m, m.batchKidsFetch(st)
 			}
 		case "up", "k":
 			if m.cursor > 0 {
 				m.cursor--
 			}
 		case "enter", "right", "l":
-			currSt, _ := m.stories[m.selected.Peek().(int)]
+			parentStory, _ := m.stories[m.selected.Peek().(int)]
 
-			stId := currSt.kids[m.cursor]
+			stId := parentStory.kids[m.cursor]
 			st, exists := m.stories[stId]
 			if exists && st.id > 0 {
 				// loaded => we can go in
 				// save previous state for when we go back
 				m.prevCursor.Push(m.cursor)
 				m.selected.Push(stId)
-				// go in
+				// go in and load kids (if needed)
 				m.cursor = 0
+				return m, m.batchKidsFetch(st)
 			}
 		case "escape", "left", "h":
 			// recover previous state
@@ -282,7 +282,43 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m model) selectionScreen() string {
+func storyView(st story, prefix string) string {
+	s := ""
+	if st.id < 0 {
+		// still loading/hasn't started loading
+		s += fmt.Sprintf("%s%s (%s)\n", prefix, "...", "...")
+		for i := 0; i < len(prefix); i++ {
+			s += " "
+		}
+		s += fmt.Sprintf("%d points by %s %s | %d comments\n", 50, "...", "...", 0)
+	} else {
+		s += fmt.Sprintf("%s%s", prefix, st.title)
+		if len(st.domain) > 0 {
+			s += fmt.Sprintf(" (%s)", st.domain)
+		}
+		s += "\n"
+		for i := 0; i < len(prefix); i++ {
+			s += " "
+		}
+		s += fmt.Sprintf("%d points by %s %s | %d comments\n", st.score, st.by, st.timestr, st.descendants)
+	}
+
+	return s
+}
+
+func (m model) storyScreen() string {
+	stId := m.selected.Peek().(int)
+	st, exists := m.stories[stId]
+	if !exists {
+		return ""
+	}
+
+	s := storyView(st, "")
+
+	return s
+}
+
+func (m model) rootScreen() string {
 	// The header
 	s := "HackerReader\n\n"
 
@@ -298,36 +334,15 @@ func (m model) selectionScreen() string {
 	}
 	for i := starti; i < len(parentStory.kids) && i < starti+listSize; i++ {
 		stId := parentStory.kids[i]
-		st, exists := m.stories[stId]
+		st, _ := m.stories[stId]
 
 		cursor := " "
 		if m.cursor == i {
 			cursor = ">"
 		}
-
-		// Render the row
-		if !exists || st.id < 0 {
-			// still loading/hasn't started loading
-			s += fmt.Sprintf("%s %d. %s (%s)\n", cursor, i, "...", "...")
-			s += fmt.Sprintf("     %d points by %s %s | %d comments\n", 0, "...", "...", 0)
-		} else {
-			s += fmt.Sprintf("%s %d. %s (%s)\n", cursor, i, st.title, st.domain)
-			s += fmt.Sprintf("     %d points by %s %s | %d comments\n", st.score, st.by, st.timestr, st.descendants)
-		}
+		prefix := fmt.Sprintf("%s %d. ", cursor, i)
+		s += storyView(st, prefix)
 	}
-
-	return s
-}
-
-func (m model) storyView() string {
-	stId := m.selected.Peek().(int)
-	st, exists := m.stories[stId]
-	if !exists {
-		return ""
-	}
-
-	s := fmt.Sprintf("%s (%s)\n", st.title, st.domain)
-	s += fmt.Sprintf("%d points by %s %s | %d comments\n", st.score, st.by, st.timestr, st.descendants)
 
 	return s
 }
@@ -335,10 +350,10 @@ func (m model) storyView() string {
 func (m model) View() string {
 	if m.selected.Len() > 1 {
 		// we're nested
-		return m.storyView()
+		return m.storyScreen()
 	}
 	// we're at root
-	return m.selectionScreen()
+	return m.rootScreen()
 }
 
 func main() {
