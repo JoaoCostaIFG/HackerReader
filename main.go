@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -169,23 +171,23 @@ func fetchStory(item string) tea.Cmd {
 				data.id = int(v)
 			case 1:
 				v, _ := jsonparser.ParseString(value)
-				data.by = string(v)
+				data.by = v
 			case 2:
 				v, _ := jsonparser.ParseInt(value)
 				data.time = int(v)
 				data.timestr = timestampToString(int64(data.time))
 			case 3:
 				v, _ := jsonparser.ParseString(value)
-				data.storytype = string(v)
+				data.storytype = v
 			case 4:
 				v, _ := jsonparser.ParseString(value)
-				data.title = string(v)
+				data.title = v
 			case 5:
 				v, _ := jsonparser.ParseString(value)
-				data.text = string(v)
+				data.text = v
 			case 6:
 				v, _ := jsonparser.ParseString(value)
-				data.url = string(v)
+				data.url = v
 				u, _ := url.Parse(data.url)
 				parts := strings.Split(u.Hostname(), ".")
 				data.domain = parts[len(parts)-2] + "." + parts[len(parts)-1]
@@ -283,6 +285,28 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// we're nested (rootStory can't be popped)
 				m.cursor = m.prevCursor.Pop().(int)
 				m.selected.Pop()
+			}
+		case "o":
+			parentStory, _ := m.stories[m.selected.Peek().(int)]
+
+			var targetStory story
+			if m.selected.Len() > 1 {
+				targetStory = parentStory
+			} else {
+				targetStory = m.stories[parentStory.kids[m.cursor]]
+			}
+
+			if len(targetStory.url) > 0 {
+				switch runtime.GOOS {
+				case "linux":
+					_ = exec.Command("xdg-open", targetStory.url).Start()
+				case "windows":
+					_ = exec.Command("rundll32", "url.dll,FileProtocolHandler", targetStory.url).Start()
+				case "darwin":
+					_ = exec.Command("open", targetStory.url).Start()
+				default:
+					// unsupported platform
+				}
 			}
 		}
 	}

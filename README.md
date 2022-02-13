@@ -13,12 +13,12 @@ before, so expect this to not be that clean.
 
 ## TODO
 
-- `[ ]` - Load comments;
-- `[ ]` - Navigate comment tree;
+- `[x]` - Load comments;
+- `[x]` - Navigate comment tree;
 - `[ ]` - Integrate Lip Gloss;
 - `[ ]` - Add ability to hide stories/comments;
 - `[ ]` - Represent poll results;
-- `[ ]` - Add ability to open story URLs in the browser;
+- `[x]` - Add ability to open story URLs in the browser;
 
 ## License
 
