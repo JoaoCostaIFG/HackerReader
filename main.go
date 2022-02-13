@@ -31,7 +31,7 @@ type story struct {
 }
 
 type model struct {
-    choices     []story
+    stories     map[int]story
     cursor      int
     selected    map[int]struct{}
     topstories  []int
@@ -40,7 +40,7 @@ type model struct {
 
 func initialModel() model {
 	return model{
-		choices:    []story{},
+		stories:    make(map[int]story),
 		selected:   make(map[int]struct{}),
 		topstories: []int{},
 		state:      0,
@@ -48,8 +48,6 @@ func initialModel() model {
 }
 
 type errMsg struct{ err error }
-// For messages that contain errors it's often handy to also implement the
-// error interface on the message.
 func (e errMsg) Error() string { return e.err.Error() }
 
 type topStoriesMsg struct {
@@ -147,8 +145,6 @@ func fetchStory(item string) tea.Cmd {
           }
         }, paths...)
 
-        fmt.Println(data)
-
         return data
     }
 }
@@ -167,13 +163,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
             fetchStory(strconv.Itoa(m.topstories[4])),
         )
     case story:
-        // a
+        m.stories[msg.id] = msg
+        if len(m.stories) >= 5 {
+            m.state = 1
+        }
     case tea.KeyMsg:
         switch msg.String() {
         case "ctrl+c", "q":
             return m, tea.Quit
         case "down", "j":
-            if m.cursor < len(m.choices) - 1 {
+            if m.cursor < len(m.stories) - 1 {
                 m.cursor++
             }
         case "up", "k":
@@ -199,24 +198,28 @@ func (m model) View() string {
     }
 
     // The header
-    s := "What should we buy at the market?\n\n"
+    s := "Stories\n\n"
 
-    // Iterate over our choices
-    for i, choice := range m.choices {
-        // Is the cursor pointing at this choice?
-        cursor := " " // no cursor
-        if m.cursor == i {
-            cursor = ">" // cursor!
+    // Iterate over stories
+    cnt := 0
+    for i:=0; i < len(m.topstories) && cnt < 5; i++ {
+        st_id := m.topstories[i]
+        st, exists := m.stories[st_id]
+        if (!exists) {
+            continue
         }
 
-        // Is this choice selected?
-        checked := " " // not selected
-        if _, ok := m.selected[i]; ok {
-            checked = "x" // selected!
+        cursor := " "
+        if m.cursor == cnt {
+            cursor = ">"
         }
-
+        checked := " "
+        if _, ok := m.selected[cnt]; ok {
+            checked = "x"
+        }
         // Render the row
-        s += fmt.Sprintf("%s [%s] %s\n", cursor, checked, choice)
+        s += fmt.Sprintf("%s [%s] %s\n", cursor, checked, st.title)
+        cnt += 1
     }
 
     // The footer
