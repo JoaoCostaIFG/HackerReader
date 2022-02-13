@@ -5,7 +5,9 @@ import (
     "fmt"
     "io/ioutil"
     "net/http"
+    "net/url"
     "os"
+    "strings"
     "strconv"
     "time"
 
@@ -13,16 +15,18 @@ import (
     "github.com/buger/jsonparser"
 )
 
-const url = "https://hacker-news.firebaseio.com/v0"
+const apiurl = "https://hacker-news.firebaseio.com/v0"
 
 type story struct {
     id          int     `json:"id"`
     by          string  `json:"by"`
     time        int     `json:"time"`
+    timestr     string
     storytype   string  `json:"type"`
     title       string  `json:"title"`
     text        string  `json:"text"`
     url         string  `json:"url"`
+    domain      string
     score       int     `json:"score"`
     descendants int     `json:"descendants"`
     kids        []int   `json:"kids"`
@@ -33,15 +37,14 @@ type story struct {
 type model struct {
     stories     map[int]story
     cursor      int
-    selected    map[int]struct{}
     topstories  []int
     state       int // 0 - loading; 1 - inited; 2 - in story
+    selected    int
 }
 
 func initialModel() model {
 	return model{
 		stories:    make(map[int]story),
-		selected:   make(map[int]struct{}),
 		topstories: []int{},
 		state:      0,
 	}
@@ -56,7 +59,7 @@ type topStoriesMsg struct {
 
 func fetchTopStories() tea.Msg {
     c := &http.Client{Timeout: 10 * time.Second}
-    res, err := c.Get(url + "/topstories.json")
+    res, err := c.Get(apiurl + "/topstories.json")
 
     if err != nil {
         return errMsg{err}
@@ -79,7 +82,7 @@ func (m model) Init() tea.Cmd {
 func fetchStory(item string) tea.Cmd {
     return func() tea.Msg {
         c := &http.Client{Timeout: 10 * time.Second}
-        res, err := c.Get(url + "/item/" + item + ".json")
+        res, err := c.Get(apiurl + "/item/" + item + ".json")
         if err != nil {
             return errMsg{err}
         }
@@ -117,6 +120,7 @@ func fetchStory(item string) tea.Cmd {
           case 2:
             v, _ := jsonparser.ParseInt(value)
             data.time = int(v)
+            data.timestr = timestampToString(int64(data.time))
           case 3:
             v, _ := jsonparser.ParseString(value)
             data.storytype = string(v)
@@ -129,6 +133,9 @@ func fetchStory(item string) tea.Cmd {
           case 6:
             v, _ := jsonparser.ParseString(value)
             data.url = string(v)
+            u, _ := url.Parse(data.url)
+            parts := strings.Split(u.Hostname(), ".")
+            data.domain = parts[len(parts)-2] + "." + parts[len(parts)-1]
           case 7:
             v, _ := jsonparser.ParseInt(value)
             data.score = int(v)
@@ -179,12 +186,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
             if m.cursor > 0 {
                 m.cursor--
             }
-        case "enter", "l", " ":
-            _, ok := m.selected[m.cursor]
-            if ok {
-                delete(m.selected, m.cursor)
-            } else {
-                m.selected[m.cursor] = struct{}{}
+        case "enter", "right", "l":
+            if m.state == 1 {
+                m.selected = m.cursor
+                m.state = 2
+            }
+        case "left", "h":
+            if m.state == 2 {
+                m.state = 1
             }
         }
     }
@@ -192,17 +201,52 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
     return m, nil
 }
 
-func (m model) View() string {
-    if (m.state == 0) {
-        return "Still loading..."
+func timestampToString(timestamp int64) string {
+    diff := int64(time.Now().UTC().Sub(time.Unix(timestamp, 0)).Seconds())
+    if diff < 60 {
+        return fmt.Sprintf("%d seconds ago", diff)
     }
+    diff = int64(diff / 60)
+    if diff < 60 {
+        return fmt.Sprintf("%d minutes ago", diff)
+    }
+    diff = int64(diff / 60)
+    if diff < 60 {
+        return fmt.Sprintf("%d hours ago", diff)
+    }
+    diff = int64(diff / 24)
+    if diff == 1 {
+        return "a day ago"
+    } else if diff < 7 {
+        return fmt.Sprintf("%d days ago", diff)
+    } else if diff < 30 {
+        diff = int64(diff / 7)
+        return fmt.Sprintf("%d weeks ago", diff)
+    }
+    diff = int64(diff / 30)
+    if diff == 1 {
+        return "a month ago"
+    } else if diff < 12 {
+        return fmt.Sprintf("%d months ago", diff)
+    }
+    diff = int64(diff / 365)
+    if diff == 1 {
+        return "a year ago"
+    }
+    return fmt.Sprintf("%d years ago", diff)
+}
 
+func (m model) selectionScreen() string {
     // The header
-    s := "Stories\n\n"
+    s := "HackerReader\n\n"
 
     // Iterate over stories
     cnt := 0
-    for i:=0; i < len(m.topstories) && cnt < 5; i++ {
+    starti := m.cursor - 2
+    if (starti < 0) {
+        starti = 0
+    }
+    for i:=starti; i < len(m.topstories) && cnt < 5; i++ {
         st_id := m.topstories[i]
         st, exists := m.stories[st_id]
         if (!exists) {
@@ -213,18 +257,39 @@ func (m model) View() string {
         if m.cursor == cnt {
             cursor = ">"
         }
-        checked := " "
-        if _, ok := m.selected[cnt]; ok {
-            checked = "x"
-        }
         // Render the row
-        s += fmt.Sprintf("%s [%s] %s\n", cursor, checked, st.title)
+        s += fmt.Sprintf("%s %d. %s (%s)\n", cursor, i, st.title, st.domain)
+        s += fmt.Sprintf("     %d points by %s %s | %d comments\n", st.score, st.by, st.timestr, st.descendants)
         cnt += 1
     }
 
-    // The footer
-    s += "\nPress q to quit.\n"
     return s
+}
+
+func (m model) storyView() string {
+    st_id := m.topstories[m.selected]
+    st, exists := m.stories[st_id]
+    if (!exists) {
+        return ""
+    }
+
+    s := fmt.Sprintf("%s (%s)\n", st.title, st.domain)
+    s += fmt.Sprintf("%d points by %s %s | %d comments\n", st.score, st.by, st.timestr, st.descendants)
+
+    return s
+}
+
+func (m model) View() string {
+    switch m.state {
+    case 0:
+        return "Still loading..."
+    case 1:
+        return m.selectionScreen()
+    case 2:
+        return m.storyView()
+    default:
+        return ""
+    }
 }
 
 func main() {
