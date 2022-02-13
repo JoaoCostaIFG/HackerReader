@@ -15,10 +15,10 @@ before, so expect this to not be that clean.
 
 - `[x]` - Load comments;
 - `[x]` - Navigate comment tree;
-- `[ ]` - Integrate Lip Gloss;
-- `[ ]` - Add ability to hide stories/comments;
-- `[ ]` - Represent poll results;
 - `[x]` - Add ability to open story URLs in the browser;
+- `[x]` - Add ability to hide stories/comments;
+- `[ ]` - Represent poll results;
+- `[ ]` - Integrate Lip Gloss;
 
 ## License
 

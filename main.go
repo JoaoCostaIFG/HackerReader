@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/golang-collections/collections/stack"
+	"html"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -24,7 +25,8 @@ const loadBacklogSize = 10
 const rootStoryId = -1
 
 type story struct {
-	id          int // -1 when not loaded
+	hidden      bool // whether the story has been hidden or not
+	id          int  // -1 when not loaded
 	by          string
 	time        int
 	timestr     string
@@ -88,7 +90,6 @@ func fetchTopStories() tea.Msg {
 	if err != nil {
 		return errMsg{err}
 	}
-
 	return topStoriesMsg{stories: data}
 }
 
@@ -183,7 +184,8 @@ func fetchStory(item string) tea.Cmd {
 				data.title = v
 			case 5:
 				v, _ := jsonparser.ParseString(value)
-				data.text = v
+				data.text = html.UnescapeString(v)
+				data.text = strings.ReplaceAll(data.text, "<p>", "\n")
 			case 6:
 				v, _ := jsonparser.ParseString(value)
 				data.url = v
@@ -212,6 +214,7 @@ func fetchStory(item string) tea.Cmd {
 			}
 		}, paths...)
 
+		data.hidden = false
 		return data
 	}
 }
@@ -285,13 +288,23 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cursor = m.prevCursor.Pop().(int)
 				m.selected.Pop()
 			}
+		case " ":
+			// hide/unhide given story
+			parentStory, _ := m.stories[m.selected.Peek().(int)]
+			if len(parentStory.kids) > 0 {
+				st, exists := m.stories[parentStory.kids[m.cursor]]
+				if exists && st.id > 0 {
+					st.hidden = !st.hidden
+					m.stories[parentStory.kids[m.cursor]] = st
+				}
+			}
 		case "o":
 			parentStory, _ := m.stories[m.selected.Peek().(int)]
 
 			var targetStory story
 			if m.selected.Len() > 1 {
 				targetStory = parentStory
-			} else {
+			} else if len(parentStory.kids) > 0 {
 				targetStory = m.stories[parentStory.kids[m.cursor]]
 			}
 
@@ -304,34 +317,40 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func storyView(st story, prefix string) string {
+func storyView(st story, prefix string, forceShow bool) string {
 	if st.id < 0 {
 		// still loading/hasn't started loading
 		ret := fmt.Sprintf("%s%s (%s)\n", prefix, "...", "...")
 		for i := 0; i < len(prefix); i++ {
 			ret += " "
 		}
-		ret += fmt.Sprintf("%d points by %s %s | %d comments\n", 50, "...", "...", 0)
+		ret += fmt.Sprintf("%d points by %s %s | %d comments", 0, "...", "...", 0)
 		return ret
+	}
+
+	if st.hidden && !forceShow {
+		// hidden post
+		ret := fmt.Sprintf("%s(hidden) %s %s", prefix, st.by, st.timestr)
+		return ret
+	}
+
+	padding := ""
+	for i := 0; i < len(prefix); i++ {
+		padding += " "
 	}
 
 	switch st.storytype {
 	case "comment":
 		ret := fmt.Sprintf("%s%s %s\n", prefix, st.by, st.timestr)
-		for i := 0; i < len(prefix); i++ {
-			ret += " "
-		}
-		ret += st.text
+		ret += padding
+		ret += strings.ReplaceAll(st.text, "\n", "\n"+padding)
 		return ret
 	default:
 		ret := fmt.Sprintf("%s%s", prefix, st.title)
 		if len(st.domain) > 0 {
 			ret += fmt.Sprintf(" (%s)", st.domain)
 		}
-		ret += "\n"
-		for i := 0; i < len(prefix); i++ {
-			ret += " "
-		}
+		ret += "\n" + padding
 		ret += fmt.Sprintf("%d points by %s %s | %d comments", st.score, st.by, st.timestr, st.descendants)
 		return ret
 	}
@@ -343,8 +362,7 @@ func (m model) storyScreen() string {
 		return ""
 	}
 
-	s := storyView(parentStory, "")
-	s += "\n\n"
+	s := storyView(parentStory, "", true) + "\n\n"
 
 	// Iterate over comments
 	starti := m.cursor - 2
@@ -360,7 +378,7 @@ func (m model) storyScreen() string {
 			cursor = ">"
 		}
 		prefix := fmt.Sprintf("%s %d. ", cursor, i)
-		s += storyView(st, prefix) + "\n"
+		s += storyView(st, prefix, false) + "\n"
 	}
 
 	return s
@@ -389,7 +407,7 @@ func (m model) rootScreen() string {
 			cursor = ">"
 		}
 		prefix := fmt.Sprintf("%s %d. ", cursor, i)
-		s += storyView(st, prefix) + "\n"
+		s += storyView(st, prefix, false) + "\n"
 	}
 
 	return s
