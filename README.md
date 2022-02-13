@@ -1,4 +1,4 @@
-# Hacker Reader
+# HackerReader
 
 **STILL WIP**
 
