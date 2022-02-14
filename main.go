@@ -36,13 +36,23 @@ var (
 	orange    = lipgloss.Color("#FF6600")
 	primary   = lipgloss.Color("#EEEEEE")
 	secondary = lipgloss.Color("#867f74")
+	green     = lipgloss.Color("#3ED71C")
 	// title bar
 	titleBar = lipgloss.NewStyle().
-			Background(orange).
-			Foreground(primary).
-			Bold(true).
-			PaddingLeft(1).
-			PaddingRight(1)
+		Background(orange).
+		Foreground(primary).
+		Bold(true).
+		PaddingLeft(1).
+		PaddingRight(1)
+	// main item
+	mainItemTitle = lipgloss.NewStyle().
+		Foreground(primary).
+		Bold(true).
+		Render
+	// check mark
+	checkmark = lipgloss.NewStyle().
+		Foreground(green).
+		Render
 	// list items
 	listItemBorder = lipgloss.Border{
 		Top:         "─",
@@ -55,16 +65,22 @@ var (
 		BottomRight: "┤",
 	}
 	listItem = lipgloss.NewStyle().
-			Foreground(primary).
-			BorderForeground(primary)
-	secondaryStyle = lipgloss.NewStyle().
-			Foreground(secondary).
-			Render
+		BorderForeground(primary)
 	// url stuff
 	urlStyle = lipgloss.NewStyle().
-			Foreground(secondary).
-			Italic(true).
-			Render
+		Foreground(secondary).
+		Italic(true).
+		Render
+	// other
+	primaryStyle = lipgloss.NewStyle().
+		Foreground(primary).
+		Render
+	secondaryStyle = lipgloss.NewStyle().
+		Foreground(secondary).
+		Render
+	boldStyle = lipgloss.NewStyle().
+		Bold(true).
+		Render
 )
 
 type story struct {
@@ -397,11 +413,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) mainItemView(st story) string {
 	if st.deleted || st.dead {
 		// deleted story
-		return fmt.Sprintf("[deleted] %s", st.timestr)
+		ret := strings.Builder{}
+		ret.WriteString(mainItemTitle("[deleted] "))
+		ret.WriteString(secondaryStyle(st.timestr))
+		return ret.String()
 	}
 
 	if st.id < 0 {
 		// still loading/hasn't started loading => shouldn't happen but it doesn't hurt to check
+		// TODO
 		ret := fmt.Sprintf("%s (%s)\n", "...", "...")
 		ret += fmt.Sprintf("%d points by %s %s | %d comments", 0, "...", "...", 0)
 		return ret
@@ -418,7 +438,7 @@ func (m model) mainItemView(st story) string {
 		for i := 0; i < len(st.parts); i++ {
 			polloptId := st.parts[i]
 			pollopt := m.stories[polloptId]
-			ret += "\n" + listItemView(pollopt, " ")
+			ret += "\n " + listItemView(pollopt)
 		}
 		return ret
 	default:
@@ -435,26 +455,21 @@ func (m model) mainItemView(st story) string {
 	}
 }
 
-func listItemView(st story, prefix string) string {
+func listItemView(st story) string {
 	if st.deleted || st.dead {
 		// deleted story
-		return fmt.Sprintf("%s[deleted] %s", prefix, st.timestr)
+		return fmt.Sprintf("[deleted] %s", st.timestr)
 	}
 
 	if st.hidden {
 		// hidden post
-		return fmt.Sprintf("%s(hidden) %s %s", prefix, st.by, st.timestr)
+		return fmt.Sprintf("(hidden) %s %s", st.by, st.timestr)
 	}
 
-	padding := ""
-	for i := 0; i < len(prefix); i++ {
-		padding += " "
-	}
 	if st.id < 0 {
 		// still loading/hasn't started loading
 		ret := strings.Builder{}
-		ret.WriteString(fmt.Sprintf("%sLoading... (...)\n", prefix))
-		ret.WriteString(padding)
+		ret.WriteString("Loading... (...)\n")
 		ret.WriteString(".. points by .. .. | .. comments")
 		return ret.String()
 	}
@@ -462,24 +477,25 @@ func listItemView(st story, prefix string) string {
 	switch st.storytype {
 	case "comment":
 		ret := strings.Builder{}
-		ret.WriteString(fmt.Sprintf("%s%s %s\n", prefix, st.by, st.timestr))
-		ret.WriteString(padding)
-		ret.WriteString(strings.ReplaceAll(st.text, "\n", "\n"+padding))
+		ret.WriteString(st.by)
+		ret.WriteString(" ")
+		ret.WriteString(st.timestr)
+		ret.WriteString("\n")
+		ret.WriteString(st.text)
 		return ret.String()
 	case "pollopt":
 		ret := strings.Builder{}
-		ret.WriteString(fmt.Sprintf("%s%s\n", prefix, st.text))
-		ret.WriteString(padding)
-		ret.WriteString(fmt.Sprintf("%d points", st.score))
+		ret.WriteString(primaryStyle(st.text))
+		ret.WriteString("\n")
+		ret.WriteString(secondaryStyle(fmt.Sprintf("%d points", st.score)))
 		return ret.String()
 	default:
 		ret := strings.Builder{}
-		ret.WriteString(fmt.Sprintf("%s%s", prefix, st.title))
+		ret.WriteString(primaryStyle(st.title))
 		if len(st.domain) > 0 {
 			ret.WriteString(urlStyle(fmt.Sprintf(" (%s)", st.domain)))
 		}
 		ret.WriteString("\n")
-		ret.WriteString(padding)
 		ret.WriteString(secondaryStyle(
 			fmt.Sprintf("%d points by %s %s | %d comments", st.score, st.by, st.timestr, st.descendants)))
 		return ret.String()
@@ -510,7 +526,6 @@ func (m model) View() string {
 		s.WriteString(m.mainItemView(parentStory))
 		s.WriteString("\n\n")
 	}
-
 	// Iterate over comments
 	starti := m.cursor - (listSize / 2)
 	if starti < 0 {
@@ -520,12 +535,17 @@ func (m model) View() string {
 		stId := parentStory.kids[i]
 		st, _ := m.stories[stId]
 
+		listItemStr := listItemView(st)
 		cursor := " "
 		if m.cursor == i {
-			cursor = ">"
+			// is current selection
+			cursor = checkmark(">")
+			listItemStr = boldStyle(listItemStr)
 		}
-		prefix := fmt.Sprintf("%s %d. ", cursor, i)
-		itemStr := listItemView(st, prefix)
+		itemStr := lipgloss.JoinHorizontal(
+			lipgloss.Top,
+			cursor, primaryStyle(fmt.Sprintf(" %d. ", i)), listItemStr,
+		)
 
 		if !(i+1 < len(parentStory.kids) && i+1 < starti+listSize) {
 			// last item
