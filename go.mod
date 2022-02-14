@@ -6,8 +6,10 @@ require (
 	github.com/JohannesKaufmann/html-to-markdown v1.3.3
 	github.com/buger/jsonparser v1.1.1
 	github.com/charmbracelet/bubbletea v0.19.3
+	github.com/charmbracelet/lipgloss v0.4.0
 	github.com/golang-collections/collections v0.0.0-20130729185459-604e922904d3
 	github.com/pkg/browser v0.0.0-20210911075715-681adbf594b8
+	golang.org/x/term v0.0.0-20210422114643-f5beecf764ed
 )
 
 require (
@@ -24,5 +26,4 @@ require (
 	github.com/rivo/uniseg v0.2.0 // indirect
 	golang.org/x/net v0.0.0-20200320220750-118fecf932d8 // indirect
 	golang.org/x/sys v0.0.0-20210616045830-e2b7044e8c71 // indirect
-	golang.org/x/term v0.0.0-20210422114643-f5beecf764ed // indirect
 )

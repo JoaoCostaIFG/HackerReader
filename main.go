@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/golang-collections/collections/stack"
+	"golang.org/x/term"
 	"html"
 	"io"
 	"io/ioutil"
@@ -17,13 +18,23 @@ import (
 	md "github.com/JohannesKaufmann/html-to-markdown"
 	"github.com/buger/jsonparser"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/pkg/browser"
 )
 
-const apiurl = "https://hacker-news.firebaseio.com/v0"
-const listSize = 5
-const loadBacklogSize = 10
-const rootStoryId = -1
+const (
+	apiurl          = "https://hacker-news.firebaseio.com/v0"
+	listSize        = 5
+	loadBacklogSize = 10
+	rootStoryId     = -1
+)
+
+var (
+	bg        = lipgloss.Color("#0F0F04")
+	orange    = lipgloss.Color("#FF6600")
+	primary   = lipgloss.Color("#B8AFA1")
+	secondary = lipgloss.Color("#706758")
+)
 
 type story struct {
 	hidden      bool // whether the story has been hidden or not
@@ -417,7 +428,7 @@ func listItemView(st story, prefix string) string {
 	}
 }
 
-func (m model) storyScreen() string {
+func (m model) storyScreen(int, int) string {
 	parentStory, exists := m.stories[m.selected.Peek().(int)]
 	if !exists {
 		return ""
@@ -445,8 +456,8 @@ func (m model) storyScreen() string {
 	return s
 }
 
-func (m model) rootScreen() string {
-	// The header
+func (m model) rootScreen(w int, h int) string {
+	// header
 	parentStory, exists := m.stories[m.selected.Peek().(int)]
 	if !exists {
 		return ""
@@ -454,7 +465,7 @@ func (m model) rootScreen() string {
 
 	s := "HackerReader\n\n"
 
-	// Iterate over stories
+	// iterate over stories
 	starti := m.cursor - 2
 	if starti < 0 {
 		starti = 0
@@ -475,12 +486,13 @@ func (m model) rootScreen() string {
 }
 
 func (m model) View() string {
+	w, h, _ := term.GetSize(int(os.Stdout.Fd()))
 	if m.selected.Len() > 1 {
 		// we're nested
-		return m.storyScreen()
+		return m.storyScreen(w, h)
 	}
 	// we're at root
-	return m.rootScreen()
+	return m.rootScreen(w, h)
 }
 
 func main() {
