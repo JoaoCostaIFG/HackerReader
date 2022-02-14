@@ -3,8 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/golang-collections/collections/stack"
-	"golang.org/x/term"
 	"html"
 	"io"
 	"io/ioutil"
@@ -19,21 +17,54 @@ import (
 	"github.com/buger/jsonparser"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/golang-collections/collections/stack"
 	"github.com/pkg/browser"
+	"golang.org/x/term"
 )
 
 const (
 	apiurl          = "https://hacker-news.firebaseio.com/v0"
 	listSize        = 5
 	loadBacklogSize = 10
-	rootStoryId     = -1
+	rootStoryId     = 0
+	maxWidth        = 120
 )
 
 var (
+	// colors
 	bg        = lipgloss.Color("#0F0F04")
 	orange    = lipgloss.Color("#FF6600")
-	primary   = lipgloss.Color("#B8AFA1")
-	secondary = lipgloss.Color("#706758")
+	primary   = lipgloss.Color("#EEEEEE")
+	secondary = lipgloss.Color("#867f74")
+	// title bar
+	titleBar = lipgloss.NewStyle().
+			Background(orange).
+			Foreground(primary).
+			Bold(true).
+			PaddingLeft(1).
+			PaddingRight(1)
+	// list items
+	listItemBorder = lipgloss.Border{
+		Top:         "─",
+		Bottom:      "─",
+		Left:        "│",
+		Right:       "│",
+		TopLeft:     "┌",
+		TopRight:    "┐",
+		BottomLeft:  "├",
+		BottomRight: "┤",
+	}
+	listItem = lipgloss.NewStyle().
+			Foreground(primary).
+			BorderForeground(primary)
+	secondaryStyle = lipgloss.NewStyle().
+			Foreground(secondary).
+			Render
+	// url stuff
+	urlStyle = lipgloss.NewStyle().
+			Foreground(secondary).
+			Italic(true).
+			Render
 )
 
 type story struct {
@@ -52,6 +83,9 @@ type story struct {
 	kids        []int
 	parts       []int
 	poll        int
+	parent      int
+	dead        bool
+	deleted     bool
 }
 
 type model struct {
@@ -175,6 +209,9 @@ func fetchStory(item string) tea.Cmd {
 			{"kids"},
 			{"parts"},
 			{"poll"},
+			{"parent"},
+			{"dead"},
+			{"deleted"},
 		}
 		jsonparser.EachKey(bodyBytes, func(idx int, value []byte, vt jsonparser.ValueType, err error) {
 			switch idx {
@@ -228,6 +265,15 @@ func fetchStory(item string) tea.Cmd {
 			case 11:
 				v, _ := jsonparser.ParseInt(value)
 				data.poll = int(v)
+			case 12:
+				v, _ := jsonparser.ParseInt(value)
+				data.parent = int(v)
+			case 13:
+				v, _ := jsonparser.ParseBoolean(value)
+				data.dead = v
+			case 14:
+				v, _ := jsonparser.ParseBoolean(value)
+				data.deleted = v
 			}
 		}, paths...)
 
@@ -349,6 +395,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) mainItemView(st story) string {
+	if st.deleted || st.dead {
+		// deleted story
+		return fmt.Sprintf("[deleted] %s", st.timestr)
+	}
+
 	if st.id < 0 {
 		// still loading/hasn't started loading => shouldn't happen but it doesn't hurt to check
 		ret := fmt.Sprintf("%s (%s)\n", "...", "...")
@@ -385,114 +436,114 @@ func (m model) mainItemView(st story) string {
 }
 
 func listItemView(st story, prefix string) string {
-	if st.id < 0 {
-		// still loading/hasn't started loading
-		ret := fmt.Sprintf("%s%s (%s)\n", prefix, "...", "...")
-		for i := 0; i < len(prefix); i++ {
-			ret += " "
-		}
-		ret += fmt.Sprintf("%d points by %s %s | %d comments", 0, "...", "...", 0)
-		return ret
+	if st.deleted || st.dead {
+		// deleted story
+		return fmt.Sprintf("%s[deleted] %s", prefix, st.timestr)
 	}
 
 	if st.hidden {
 		// hidden post
-		ret := fmt.Sprintf("%s(hidden) %s %s", prefix, st.by, st.timestr)
-		return ret
+		return fmt.Sprintf("%s(hidden) %s %s", prefix, st.by, st.timestr)
 	}
 
 	padding := ""
 	for i := 0; i < len(prefix); i++ {
 		padding += " "
 	}
+	if st.id < 0 {
+		// still loading/hasn't started loading
+		ret := strings.Builder{}
+		ret.WriteString(fmt.Sprintf("%sLoading... (...)\n", prefix))
+		ret.WriteString(padding)
+		ret.WriteString(".. points by .. .. | .. comments")
+		return ret.String()
+	}
 
 	switch st.storytype {
 	case "comment":
-		ret := fmt.Sprintf("%s%s %s\n", prefix, st.by, st.timestr)
-		ret += padding
-		ret += strings.ReplaceAll(st.text, "\n", "\n"+padding)
-		return ret
+		ret := strings.Builder{}
+		ret.WriteString(fmt.Sprintf("%s%s %s\n", prefix, st.by, st.timestr))
+		ret.WriteString(padding)
+		ret.WriteString(strings.ReplaceAll(st.text, "\n", "\n"+padding))
+		return ret.String()
 	case "pollopt":
-		ret := prefix + st.text + "\n"
-		ret += padding
-		ret += fmt.Sprintf("%d points", st.score)
-		return ret
+		ret := strings.Builder{}
+		ret.WriteString(fmt.Sprintf("%s%s\n", prefix, st.text))
+		ret.WriteString(padding)
+		ret.WriteString(fmt.Sprintf("%d points", st.score))
+		return ret.String()
 	default:
-		ret := fmt.Sprintf("%s%s", prefix, st.title)
+		ret := strings.Builder{}
+		ret.WriteString(fmt.Sprintf("%s%s", prefix, st.title))
 		if len(st.domain) > 0 {
-			ret += fmt.Sprintf(" (%s)", st.domain)
+			ret.WriteString(urlStyle(fmt.Sprintf(" (%s)", st.domain)))
 		}
-		ret += "\n" + padding
-		ret += fmt.Sprintf("%d points by %s %s | %d comments", st.score, st.by, st.timestr, st.descendants)
-		return ret
+		ret.WriteString("\n")
+		ret.WriteString(padding)
+		ret.WriteString(secondaryStyle(
+			fmt.Sprintf("%d points by %s %s | %d comments", st.score, st.by, st.timestr, st.descendants)))
+		return ret.String()
 	}
-}
-
-func (m model) storyScreen(int, int) string {
-	parentStory, exists := m.stories[m.selected.Peek().(int)]
-	if !exists {
-		return ""
-	}
-
-	s := m.mainItemView(parentStory) + "\n\n"
-
-	// Iterate over comments
-	starti := m.cursor - 2
-	if starti < 0 {
-		starti = 0
-	}
-	for i := starti; i < len(parentStory.kids) && i < starti+listSize; i++ {
-		stId := parentStory.kids[i]
-		st, _ := m.stories[stId]
-
-		cursor := " "
-		if m.cursor == i {
-			cursor = ">"
-		}
-		prefix := fmt.Sprintf("%s %d. ", cursor, i)
-		s += listItemView(st, prefix) + "\n"
-	}
-
-	return s
-}
-
-func (m model) rootScreen(w int, h int) string {
-	// header
-	parentStory, exists := m.stories[m.selected.Peek().(int)]
-	if !exists {
-		return ""
-	}
-
-	s := "HackerReader\n\n"
-
-	// iterate over stories
-	starti := m.cursor - 2
-	if starti < 0 {
-		starti = 0
-	}
-	for i := starti; i < len(parentStory.kids) && i < starti+listSize; i++ {
-		stId := parentStory.kids[i]
-		st, _ := m.stories[stId]
-
-		cursor := " "
-		if m.cursor == i {
-			cursor = ">"
-		}
-		prefix := fmt.Sprintf("%s %d. ", cursor, i)
-		s += listItemView(st, prefix) + "\n"
-	}
-
-	return s
 }
 
 func (m model) View() string {
-	w, h, _ := term.GetSize(int(os.Stdout.Fd()))
-	if m.selected.Len() > 1 {
-		// we're nested
-		return m.storyScreen(w, h)
+	w, _, _ := term.GetSize(int(os.Stdout.Fd()))
+	cappedW := w
+	if cappedW > maxWidth {
+		cappedW = maxWidth
 	}
-	// we're at root
-	return m.rootScreen(w, h)
+
+	// current story (can be root)
+	parentStory, exists := m.stories[m.selected.Peek().(int)]
+	if !exists {
+		return ""
+	}
+
+	s := strings.Builder{}
+	// top bar
+	s.WriteString(titleBar.Width(w).
+		Render("HackerReader"))
+	s.WriteString("\n")
+
+	// current story (if any selected)
+	if parentStory.id != rootStoryId {
+		s.WriteString(m.mainItemView(parentStory))
+		s.WriteString("\n\n")
+	}
+
+	// Iterate over comments
+	starti := m.cursor - (listSize / 2)
+	if starti < 0 {
+		starti = 0
+	}
+	for i := starti; i < len(parentStory.kids) && i < starti+listSize; i++ {
+		stId := parentStory.kids[i]
+		st, _ := m.stories[stId]
+
+		cursor := " "
+		if m.cursor == i {
+			cursor = ">"
+		}
+		prefix := fmt.Sprintf("%s %d. ", cursor, i)
+		itemStr := listItemView(st, prefix)
+
+		if !(i+1 < len(parentStory.kids) && i+1 < starti+listSize) {
+			// last item
+			listItemBorder.BottomLeft = "└"
+			listItemBorder.BottomRight = "┘"
+		} else {
+			listItemBorder.BottomLeft = "├"
+			listItemBorder.BottomRight = "┤"
+		}
+		s.WriteString(listItem.
+			Width(cappedW-2).
+			Border(listItemBorder, i == starti, true, true).
+			Render(itemStr),
+		)
+		s.WriteString("\n")
+	}
+
+	return s.String()
 }
 
 func main() {
