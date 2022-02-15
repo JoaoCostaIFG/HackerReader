@@ -34,14 +34,15 @@ const (
 
 var (
 	// colors
-	orange    = lipgloss.Color("#FF6600")
 	primary   = lipgloss.Color("#EEEEEE")
 	secondary = lipgloss.Color("#867f74")
+	black     = lipgloss.Color("#222222")
 	green     = lipgloss.Color("#3ED71C")
+	orange    = lipgloss.Color("#FF6600")
 	// title bar
 	titleBar = lipgloss.NewStyle().
 			Background(orange).
-			Foreground(primary).
+			Foreground(black).
 			Bold(true).
 			PaddingLeft(1).
 			PaddingRight(1)
@@ -456,7 +457,7 @@ func (m model) listItemView(st story, highlight bool, selected bool, w int) stri
 		mdRenderer, _ := glamour.NewTermRenderer(
 			glamour.WithStylesFromJSONFile("./mdstyle.json"),
 			glamour.WithEmoji(),
-			glamour.WithWordWrap(50),
+			glamour.WithWordWrap(w),
 		)
 		commentTxt, _ := mdRenderer.Render(st.text)
 
@@ -466,11 +467,7 @@ func (m model) listItemView(st story, highlight bool, selected bool, w int) stri
 				Bold(highlight).
 				MaxWidth(w).
 				Render(st.by+" "+st.timestr),
-			//st.text,
-			primaryStyle.Copy().
-				Bold(highlight).
-				Width(w).
-				Render(commentTxt),
+			strings.TrimRight(commentTxt, "\n"),
 		)
 	case "pollopt":
 		return lipgloss.JoinVertical(
@@ -517,12 +514,17 @@ func (m model) listItemView(st story, highlight bool, selected bool, w int) stri
 		if selected {
 			if len(st.text) > 0 {
 				// story has text
+				mdRenderer, _ := glamour.NewTermRenderer(
+					glamour.WithStylesFromJSONFile("./mdstyle.json"),
+					glamour.WithEmoji(),
+					glamour.WithWordWrap(w),
+				)
+				storyTxt, _ := mdRenderer.Render(st.text)
+
 				row = lipgloss.JoinVertical(
 					lipgloss.Left,
 					row,
-					primaryStyle.Copy().
-						Width(w).
-						Render(st.text),
+					strings.TrimRight(storyTxt, "\n"),
 				)
 			}
 
