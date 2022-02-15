@@ -24,6 +24,7 @@ import (
 
 const (
 	apiurl          = "https://hacker-news.firebaseio.com/v0"
+	itemUrl         = "https://news.ycombinator.com/item?id="
 	listSize        = 5
 	loadBacklogSize = 10
 	rootStoryId     = 0
@@ -39,20 +40,21 @@ var (
 	green     = lipgloss.Color("#3ED71C")
 	// title bar
 	titleBar = lipgloss.NewStyle().
-		Background(orange).
-		Foreground(primary).
-		Bold(true).
-		PaddingLeft(1).
-		PaddingRight(1)
+			Background(orange).
+			Foreground(primary).
+			Bold(true).
+			PaddingLeft(1).
+			PaddingRight(1)
 	// main item
 	mainItemTitle = lipgloss.NewStyle().
-		Foreground(primary).
-		Bold(true).
-		Render
+			Foreground(primary).
+			Bold(true).
+			Render
 	// check mark
 	checkmark = lipgloss.NewStyle().
-		Foreground(green).
-		Render
+			Foreground(green).
+			Bold(true).
+			Render
 	// list items
 	listItemBorder = lipgloss.Border{
 		Top:         "─",
@@ -65,22 +67,17 @@ var (
 		BottomRight: "┤",
 	}
 	listItem = lipgloss.NewStyle().
-		BorderForeground(primary)
+			Border(listItemBorder).
+			BorderForeground(primary)
 	// url stuff
 	urlStyle = lipgloss.NewStyle().
-		Foreground(secondary).
-		Italic(true).
-		Render
+			Foreground(secondary).
+			Italic(true)
 	// other
 	primaryStyle = lipgloss.NewStyle().
-		Foreground(primary).
-		Render
+			Foreground(primary)
 	secondaryStyle = lipgloss.NewStyle().
-		Foreground(secondary).
-		Render
-	boldStyle = lipgloss.NewStyle().
-		Bold(true).
-		Render
+			Foreground(secondary)
 )
 
 type story struct {
@@ -345,20 +342,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "ctrl+c", "q":
+		case "ctrl+c", "q": // quit
 			return m, tea.Quit
-		case "down", "j":
+		case "down", "j": // point down
 			st, _ := m.stories[m.selected.Peek().(int)]
 			if m.cursor < len(st.kids)-1 {
 				m.cursor++
 				// load missing stories
 				return m, m.batchKidsFetch(st)
 			}
-		case "up", "k":
+		case "up", "k": // point up
 			if m.cursor > 0 {
 				m.cursor--
 			}
-		case "enter", "right", "l":
+		case "enter", "right", "l": // go in
 			parentStory, _ := m.stories[m.selected.Peek().(int)]
 			if len(parentStory.kids) > 0 {
 				// can only go in if there's kids
@@ -374,15 +371,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, m.batchKidsFetch(st)
 				}
 			}
-		case "escape", "left", "h":
+		case "escape", "left", "h": // go back
 			// recover previous state
 			if m.selected.Len() > 1 {
 				// we're nested (rootStory can't be popped)
 				m.cursor = m.prevCursor.Pop().(int)
 				m.selected.Pop()
 			}
-		case " ":
-			// hide/unhide given story
+		case " ": // hide/unhide given story
 			parentStory, _ := m.stories[m.selected.Peek().(int)]
 			if len(parentStory.kids) > 0 {
 				st, exists := m.stories[parentStory.kids[m.cursor]]
@@ -391,7 +387,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.stories[parentStory.kids[m.cursor]] = st
 				}
 			}
-		case "o":
+		case "o": // open story URL is browser
 			parentStory, _ := m.stories[m.selected.Peek().(int)]
 
 			var targetStory story
@@ -404,6 +400,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if len(targetStory.url) > 0 {
 				_ = browser.OpenURL(targetStory.url)
 			}
+		case "O": // open story in browser
+			parentStory, _ := m.stories[m.selected.Peek().(int)]
+			if len(parentStory.kids) > 0 {
+				targetSt := m.stories[parentStory.kids[m.cursor]]
+				targetId := targetSt.id
+				_ = browser.OpenURL(itemUrl + strconv.Itoa(targetId))
+			}
 		}
 	}
 
@@ -413,10 +416,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) mainItemView(st story) string {
 	if st.deleted || st.dead {
 		// deleted story
-		ret := strings.Builder{}
-		ret.WriteString(mainItemTitle("[deleted] "))
-		ret.WriteString(secondaryStyle(st.timestr))
-		return ret.String()
+		return lipgloss.JoinHorizontal(
+			lipgloss.Top,
+			mainItemTitle("[deleted] "),
+			secondaryStyle.Render(st.timestr),
+		)
 	}
 
 	if st.id < 0 {
@@ -436,9 +440,10 @@ func (m model) mainItemView(st story) string {
 		ret := fmt.Sprintf("%s\n", st.title)
 		ret += fmt.Sprintf("%d points by %s %s | %d comments", st.score, st.by, st.timestr, st.descendants)
 		for i := 0; i < len(st.parts); i++ {
-			polloptId := st.parts[i]
-			pollopt := m.stories[polloptId]
-			ret += "\n " + listItemView(pollopt)
+			// TODO
+			//polloptId := st.parts[i]
+			//pollopt := m.stories[polloptId]
+			//ret += "\n " + listItemView(pollopt)
 		}
 		return ret
 	default:
@@ -455,50 +460,85 @@ func (m model) mainItemView(st story) string {
 	}
 }
 
-func listItemView(st story) string {
+func listItemView(st story, highlight bool, w int) string {
 	if st.deleted || st.dead {
 		// deleted story
-		return fmt.Sprintf("[deleted] %s", st.timestr)
+		return secondaryStyle.Copy().
+			Bold(highlight).
+			MaxWidth(w).
+			Render(fmt.Sprintf("[deleted] %s", st.timestr))
 	}
 
 	if st.hidden {
 		// hidden post
-		return fmt.Sprintf("(hidden) %s %s", st.by, st.timestr)
+		return secondaryStyle.Copy().
+			Bold(highlight).
+			MaxWidth(w).
+			Render(fmt.Sprintf("(hidden) %s %s", st.by, st.timestr))
 	}
 
 	if st.id < 0 {
 		// still loading/hasn't started loading
-		ret := strings.Builder{}
-		ret.WriteString("Loading... (...)\n")
-		ret.WriteString(".. points by .. .. | .. comments")
-		return ret.String()
+		return secondaryStyle.Copy().
+			Bold(highlight).
+			MaxWidth(w).
+			Render("Loading... (...)\n.. points by .. .. | .. comments")
 	}
 
 	switch st.storytype {
 	case "comment":
-		ret := strings.Builder{}
-		ret.WriteString(st.by)
-		ret.WriteString(" ")
-		ret.WriteString(st.timestr)
-		ret.WriteString("\n")
-		ret.WriteString(st.text)
-		return ret.String()
+		return lipgloss.JoinVertical(
+			lipgloss.Left,
+			secondaryStyle.Copy().
+				Bold(highlight).
+				MaxWidth(w).
+				Render(st.by+" "+st.timestr),
+			primaryStyle.Copy().
+				Bold(highlight).
+				MaxWidth(w).
+				Render(st.text),
+		)
 	case "pollopt":
-		ret := strings.Builder{}
-		ret.WriteString(primaryStyle(st.text))
-		ret.WriteString("\n")
-		ret.WriteString(secondaryStyle(fmt.Sprintf("%d points", st.score)))
-		return ret.String()
+		return lipgloss.JoinVertical(
+			lipgloss.Left,
+			primaryStyle.Copy().
+				Bold(highlight).
+				MaxWidth(w).
+				Render(st.text),
+			secondaryStyle.Copy().
+				Bold(highlight).
+				MaxWidth(w).
+				Render(fmt.Sprintf("%d points", st.score)),
+		)
 	default:
-		ret := strings.Builder{}
-		ret.WriteString(primaryStyle(st.title))
+		row := primaryStyle.Copy().
+			Bold(highlight).
+			MaxWidth(w).
+			Render(st.title)
 		if len(st.domain) > 0 {
-			ret.WriteString(urlStyle(fmt.Sprintf(" (%s)", st.domain)))
+			remainingW := w - lipgloss.Width(row)
+			if remainingW <= 0 {
+				remainingW = w
+			}
+			row = lipgloss.JoinHorizontal(
+				lipgloss.Top,
+				row,
+				urlStyle.Copy().
+					Bold(highlight).
+					MaxWidth(remainingW).
+					Render(fmt.Sprintf(" (%s)", st.domain)),
+			)
 		}
-		ret.WriteString("\n")
-		ret.WriteString(secondaryStyle(
-			fmt.Sprintf("%d points by %s %s | %d comments", st.score, st.by, st.timestr, st.descendants)))
-		return ret.String()
+		return lipgloss.JoinVertical(
+			lipgloss.Left,
+			row,
+			secondaryStyle.Copy().
+				Bold(highlight).
+				MaxWidth(w).
+				Render(
+					fmt.Sprintf("%d points by %s %s | %d comments", st.score, st.by, st.timestr, st.descendants),
+				),
+		)
 	}
 }
 
@@ -534,17 +574,23 @@ func (m model) View() string {
 	for i := starti; i < len(parentStory.kids) && i < starti+listSize; i++ {
 		stId := parentStory.kids[i]
 		st, _ := m.stories[stId]
+		highlight := m.cursor == i
 
-		listItemStr := listItemView(st)
+		orderI := primaryStyle.Copy().
+			Bold(highlight).Render(fmt.Sprintf(" %d. ", i))
 		cursor := " "
 		if m.cursor == i {
 			// is current selection
 			cursor = checkmark(">")
-			listItemStr = boldStyle(listItemStr)
 		}
+		row := lipgloss.JoinHorizontal(lipgloss.Top, orderI, cursor)
+		remainingW := w - lipgloss.Width(row)
+		listItemStr := listItemView(st, highlight, remainingW)
 		itemStr := lipgloss.JoinHorizontal(
 			lipgloss.Top,
-			cursor, primaryStyle(fmt.Sprintf(" %d. ", i)), listItemStr,
+			cursor,
+			orderI,
+			listItemStr,
 		)
 
 		if !(i+1 < len(parentStory.kids) && i+1 < starti+listSize) {
