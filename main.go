@@ -13,9 +13,10 @@ import (
 	"strings"
 	"time"
 
-	md "github.com/JohannesKaufmann/html-to-markdown"
+	html2md "github.com/JohannesKaufmann/html-to-markdown"
 	"github.com/buger/jsonparser"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/golang-collections/collections/stack"
 	"github.com/pkg/browser"
@@ -39,11 +40,11 @@ var (
 	green     = lipgloss.Color("#3ED71C")
 	// title bar
 	titleBar = lipgloss.NewStyle().
-		Background(orange).
-		Foreground(primary).
-		Bold(true).
-		PaddingLeft(1).
-		PaddingRight(1)
+			Background(orange).
+			Foreground(primary).
+			Bold(true).
+			PaddingLeft(1).
+			PaddingRight(1)
 	// main item
 	mainItemBorder = lipgloss.Border{
 		Top:         "═",
@@ -56,13 +57,13 @@ var (
 		BottomRight: "╝",
 	}
 	mainItem = lipgloss.NewStyle().
-		Border(mainItemBorder).
-		BorderForeground(primary)
+			Border(mainItemBorder).
+			BorderForeground(primary)
 	// check mark
 	checkmark = lipgloss.NewStyle().
-		Foreground(green).
-		Bold(true).
-		Render
+			Foreground(green).
+			Bold(true).
+			Render
 	// list items
 	listItemBorder = lipgloss.Border{
 		Top:         "─",
@@ -75,17 +76,19 @@ var (
 		BottomRight: "┤",
 	}
 	listItem = lipgloss.NewStyle().
-		Border(listItemBorder).
-		BorderForeground(primary)
+			Border(listItemBorder).
+			BorderForeground(primary)
 	// url stuff
 	urlStyle = lipgloss.NewStyle().
-		Foreground(secondary).
-		Italic(true)
+			Foreground(secondary).
+			Italic(true)
 	// other
 	primaryStyle = lipgloss.NewStyle().
-		Foreground(primary)
+			Foreground(primary)
 	secondaryStyle = lipgloss.NewStyle().
-		Foreground(secondary)
+			Foreground(secondary)
+	// md
+	mdStyle = glamour.WithStylesFromJSONFile("./mdstyle.json")
 )
 
 type story struct {
@@ -254,12 +257,14 @@ func fetchStory(item string) tea.Cmd {
 				data.title = v
 			case 5:
 				v, _ := jsonparser.ParseString(value)
-				data.text, err = md.NewConverter("", true, nil).ConvertString(v)
+				data.text, err = html2md.NewConverter("", true, nil).ConvertString(v)
 				if err != nil {
 					// fallback
 					data.text = html.UnescapeString(v)
 				} else {
 					data.text = strings.ReplaceAll(data.text, "\n\n", "\n")
+					data.text = strings.ReplaceAll(data.text, "\\-", "-")
+					data.text = strings.ReplaceAll(data.text, "\\>", ">")
 				}
 			case 6:
 				v, _ := jsonparser.ParseString(value)
@@ -448,16 +453,24 @@ func (m model) listItemView(st story, highlight bool, selected bool, w int) stri
 
 	switch st.storytype {
 	case "comment":
+		mdRenderer, _ := glamour.NewTermRenderer(
+			glamour.WithStylesFromJSONFile("./mdstyle.json"),
+			glamour.WithEmoji(),
+			glamour.WithWordWrap(50),
+		)
+		commentTxt, _ := mdRenderer.Render(st.text)
+
 		return lipgloss.JoinVertical(
 			lipgloss.Left,
 			secondaryStyle.Copy().
 				Bold(highlight).
 				MaxWidth(w).
 				Render(st.by+" "+st.timestr),
+			//st.text,
 			primaryStyle.Copy().
 				Bold(highlight).
 				Width(w).
-				Render(st.text),
+				Render(commentTxt),
 		)
 	case "pollopt":
 		return lipgloss.JoinVertical(
@@ -501,20 +514,33 @@ func (m model) listItemView(st story, highlight bool, selected bool, w int) stri
 			}
 		}
 
-		if selected && st.storytype == "poll" {
-			// if it is a selected poll => show parts
-			for i := 0; i < len(st.parts); i++ {
-				polloptId := st.parts[i]
-				pollopt := m.stories[polloptId]
+		if selected {
+			if len(st.text) > 0 {
+				// story has text
 				row = lipgloss.JoinVertical(
 					lipgloss.Left,
 					row,
-					lipgloss.JoinHorizontal(
-						lipgloss.Top,
-						"  ",
-						m.listItemView(pollopt, false, false, w-2),
-					),
+					primaryStyle.Copy().
+						Width(w).
+						Render(st.text),
 				)
+			}
+
+			if st.storytype == "poll" {
+				// if it is a selected poll => show parts
+				for i := 0; i < len(st.parts); i++ {
+					polloptId := st.parts[i]
+					pollopt := m.stories[polloptId]
+					row = lipgloss.JoinVertical(
+						lipgloss.Left,
+						row,
+						lipgloss.JoinHorizontal(
+							lipgloss.Top,
+							"  ",
+							m.listItemView(pollopt, false, false, w-2),
+						),
+					)
+				}
 			}
 		}
 
