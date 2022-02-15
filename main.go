@@ -495,7 +495,7 @@ func listItemView(st story, highlight bool, w int) string {
 				Render(st.by+" "+st.timestr),
 			primaryStyle.Copy().
 				Bold(highlight).
-				MaxWidth(w).
+				Width(w).
 				Render(st.text),
 		)
 	case "pollopt":
@@ -503,7 +503,7 @@ func listItemView(st story, highlight bool, w int) string {
 			lipgloss.Left,
 			primaryStyle.Copy().
 				Bold(highlight).
-				MaxWidth(w).
+				Width(w).
 				Render(st.text),
 			secondaryStyle.Copy().
 				Bold(highlight).
@@ -516,18 +516,28 @@ func listItemView(st story, highlight bool, w int) string {
 			MaxWidth(w).
 			Render(st.title)
 		if len(st.domain) > 0 {
+			// story has an URL
 			remainingW := w - lipgloss.Width(row)
-			if remainingW <= 0 {
-				remainingW = w
+			if remainingW < len(st.domain)-3 { // 1 space + 2 parentheses
+				// no space => go to next line
+				row = lipgloss.JoinVertical(
+					lipgloss.Left,
+					row,
+					urlStyle.Copy().
+						Bold(highlight).
+						MaxWidth(w).
+						Render(fmt.Sprintf("(%s)", st.domain)),
+				)
+			} else {
+				row = lipgloss.JoinHorizontal(
+					lipgloss.Top,
+					row,
+					urlStyle.Copy().
+						Bold(highlight).
+						MaxWidth(remainingW).
+						Render(fmt.Sprintf(" (%s)", st.domain)),
+				)
 			}
-			row = lipgloss.JoinHorizontal(
-				lipgloss.Top,
-				row,
-				urlStyle.Copy().
-					Bold(highlight).
-					MaxWidth(remainingW).
-					Render(fmt.Sprintf(" (%s)", st.domain)),
-			)
 		}
 		return lipgloss.JoinVertical(
 			lipgloss.Left,
@@ -555,36 +565,35 @@ func (m model) View() string {
 		return ""
 	}
 
-	s := strings.Builder{}
 	// top bar
-	s.WriteString(titleBar.Width(w).
-		Render("HackerReader"))
-	s.WriteString("\n")
+	ret := titleBar.Width(w).Render("HackerReader")
 
 	// current story (if any selected)
 	if parentStory.id != rootStoryId {
-		s.WriteString(m.mainItemView(parentStory))
-		s.WriteString("\n\n")
+		ret = lipgloss.JoinVertical(
+			lipgloss.Left,
+			ret,
+			m.mainItemView(parentStory),
+			"\n\n",
+		)
 	}
-	// Iterate over comments
-	starti := m.cursor - (listSize / 2)
-	if starti < 0 {
-		starti = 0
-	}
+
+	// iterate over children
+	starti := max(0, m.cursor-(listSize/2))
 	for i := starti; i < len(parentStory.kids) && i < starti+listSize; i++ {
 		stId := parentStory.kids[i]
 		st, _ := m.stories[stId]
-		highlight := m.cursor == i
+		highlight := m.cursor == i // is this the current selected entry?
 
 		orderI := primaryStyle.Copy().
 			Bold(highlight).Render(fmt.Sprintf(" %d. ", i))
 		cursor := " "
-		if m.cursor == i {
-			// is current selection
+		if highlight {
 			cursor = checkmark(">")
 		}
 		row := lipgloss.JoinHorizontal(lipgloss.Top, orderI, cursor)
-		remainingW := w - lipgloss.Width(row)
+		// 2 for borders + 1 for padding
+		remainingW := cappedW - lipgloss.Width(row) - 3
 		listItemStr := listItemView(st, highlight, remainingW)
 		itemStr := lipgloss.JoinHorizontal(
 			lipgloss.Top,
@@ -601,15 +610,18 @@ func (m model) View() string {
 			listItemBorder.BottomLeft = "├"
 			listItemBorder.BottomRight = "┤"
 		}
-		s.WriteString(listItem.
-			Width(cappedW-2).
-			Border(listItemBorder, i == starti, true, true).
-			Render(itemStr),
+
+		ret = lipgloss.JoinVertical(
+			lipgloss.Left,
+			ret,
+			listItem.
+				Width(cappedW-2).
+				Border(listItemBorder, i == starti, true, true).
+				Render(itemStr),
 		)
-		s.WriteString("\n")
 	}
 
-	return s.String()
+	return ret + "\n"
 }
 
 func main() {
@@ -618,4 +630,11 @@ func main() {
 		fmt.Printf("Alas, there's been an error: %v", err)
 		os.Exit(1)
 	}
+}
+
+func max(a int, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
