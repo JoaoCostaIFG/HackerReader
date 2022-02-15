@@ -264,8 +264,12 @@ func fetchStory(item string) tea.Cmd {
 					data.text = html.UnescapeString(v)
 				} else {
 					data.text = strings.ReplaceAll(data.text, "\n\n", "\n")
+					// TODO wait for escape support to remove this
+					// TODO https://github.com/charmbracelet/glamour/issues/106
 					data.text = strings.ReplaceAll(data.text, "\\-", "-")
 					data.text = strings.ReplaceAll(data.text, "\\>", ">")
+					data.text = strings.ReplaceAll(data.text, "\\[", "[")
+					data.text = strings.ReplaceAll(data.text, "\\]", "]")
 				}
 			case 6:
 				v, _ := jsonparser.ParseString(value)
