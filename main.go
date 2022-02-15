@@ -33,28 +33,36 @@ const (
 
 var (
 	// colors
-	bg        = lipgloss.Color("#0F0F04")
 	orange    = lipgloss.Color("#FF6600")
 	primary   = lipgloss.Color("#EEEEEE")
 	secondary = lipgloss.Color("#867f74")
 	green     = lipgloss.Color("#3ED71C")
 	// title bar
 	titleBar = lipgloss.NewStyle().
-			Background(orange).
-			Foreground(primary).
-			Bold(true).
-			PaddingLeft(1).
-			PaddingRight(1)
+		Background(orange).
+		Foreground(primary).
+		Bold(true).
+		PaddingLeft(1).
+		PaddingRight(1)
 	// main item
-	mainItemTitle = lipgloss.NewStyle().
-			Foreground(primary).
-			Bold(true).
-			Render
+	mainItemBorder = lipgloss.Border{
+		Top:         "═",
+		Bottom:      "═",
+		Left:        "║",
+		Right:       "║",
+		TopLeft:     "╔",
+		TopRight:    "╗",
+		BottomLeft:  "╚",
+		BottomRight: "╝",
+	}
+	mainItem = lipgloss.NewStyle().
+		Border(mainItemBorder).
+		BorderForeground(primary)
 	// check mark
 	checkmark = lipgloss.NewStyle().
-			Foreground(green).
-			Bold(true).
-			Render
+		Foreground(green).
+		Bold(true).
+		Render
 	// list items
 	listItemBorder = lipgloss.Border{
 		Top:         "─",
@@ -67,17 +75,17 @@ var (
 		BottomRight: "┤",
 	}
 	listItem = lipgloss.NewStyle().
-			Border(listItemBorder).
-			BorderForeground(primary)
+		Border(listItemBorder).
+		BorderForeground(primary)
 	// url stuff
 	urlStyle = lipgloss.NewStyle().
-			Foreground(secondary).
-			Italic(true)
+		Foreground(secondary).
+		Italic(true)
 	// other
 	primaryStyle = lipgloss.NewStyle().
-			Foreground(primary)
+		Foreground(primary)
 	secondaryStyle = lipgloss.NewStyle().
-			Foreground(secondary)
+		Foreground(secondary)
 )
 
 type story struct {
@@ -413,54 +421,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m model) mainItemView(st story) string {
-	if st.deleted || st.dead {
-		// deleted story
-		return lipgloss.JoinHorizontal(
-			lipgloss.Top,
-			mainItemTitle("[deleted] "),
-			secondaryStyle.Render(st.timestr),
-		)
-	}
-
-	if st.id < 0 {
-		// still loading/hasn't started loading => shouldn't happen but it doesn't hurt to check
-		// TODO
-		ret := fmt.Sprintf("%s (%s)\n", "...", "...")
-		ret += fmt.Sprintf("%d points by %s %s | %d comments", 0, "...", "...", 0)
-		return ret
-	}
-
-	switch st.storytype {
-	case "comment":
-		ret := fmt.Sprintf("%s %s\n", st.by, st.timestr)
-		ret += st.text
-		return ret
-	case "poll":
-		ret := fmt.Sprintf("%s\n", st.title)
-		ret += fmt.Sprintf("%d points by %s %s | %d comments", st.score, st.by, st.timestr, st.descendants)
-		for i := 0; i < len(st.parts); i++ {
-			// TODO
-			//polloptId := st.parts[i]
-			//pollopt := m.stories[polloptId]
-			//ret += "\n " + listItemView(pollopt)
-		}
-		return ret
-	default:
-		ret := fmt.Sprintf("%s", st.title)
-		if len(st.domain) > 0 {
-			ret += fmt.Sprintf(" (%s)", st.domain)
-		}
-		ret += "\n"
-		ret += fmt.Sprintf("%d points by %s %s | %d comments", st.score, st.by, st.timestr, st.descendants)
-		if len(st.text) > 0 {
-			ret += "\n" + st.text
-		}
-		return ret
-	}
-}
-
-func listItemView(st story, highlight bool, w int) string {
+func (m model) listItemView(st story, highlight bool, selected bool, w int) string {
 	if st.deleted || st.dead {
 		// deleted story
 		return secondaryStyle.Copy().
@@ -469,8 +430,8 @@ func listItemView(st story, highlight bool, w int) string {
 			Render(fmt.Sprintf("[deleted] %s", st.timestr))
 	}
 
-	if st.hidden {
-		// hidden post
+	if st.hidden && !selected {
+		// hidden post (and not selected (parent))
 		return secondaryStyle.Copy().
 			Bold(highlight).
 			MaxWidth(w).
@@ -539,7 +500,25 @@ func listItemView(st story, highlight bool, w int) string {
 				)
 			}
 		}
-		return lipgloss.JoinVertical(
+
+		if selected && st.storytype == "poll" {
+			// if it is a selected poll => show parts
+			for i := 0; i < len(st.parts); i++ {
+				polloptId := st.parts[i]
+				pollopt := m.stories[polloptId]
+				row = lipgloss.JoinVertical(
+					lipgloss.Left,
+					row,
+					lipgloss.JoinHorizontal(
+						lipgloss.Top,
+						"  ",
+						m.listItemView(pollopt, false, false, w-2),
+					),
+				)
+			}
+		}
+
+		row = lipgloss.JoinVertical(
 			lipgloss.Left,
 			row,
 			secondaryStyle.Copy().
@@ -549,6 +528,8 @@ func listItemView(st story, highlight bool, w int) string {
 					fmt.Sprintf("%d points by %s %s | %d comments", st.score, st.by, st.timestr, st.descendants),
 				),
 		)
+
+		return row
 	}
 }
 
@@ -570,11 +551,12 @@ func (m model) View() string {
 
 	// current story (if any selected)
 	if parentStory.id != rootStoryId {
+		mainItemStr := m.listItemView(parentStory, true, true, cappedW-4)
 		ret = lipgloss.JoinVertical(
 			lipgloss.Left,
 			ret,
-			m.mainItemView(parentStory),
-			"\n\n",
+			mainItem.Width(cappedW-2).
+				Render(lipgloss.JoinHorizontal(lipgloss.Top, " ", mainItemStr)),
 		)
 	}
 
@@ -594,7 +576,7 @@ func (m model) View() string {
 		row := lipgloss.JoinHorizontal(lipgloss.Top, orderI, cursor)
 		// 2 for borders + 1 for padding
 		remainingW := cappedW - lipgloss.Width(row) - 3
-		listItemStr := listItemView(st, highlight, remainingW)
+		listItemStr := m.listItemView(st, highlight, false, remainingW)
 		itemStr := lipgloss.JoinHorizontal(
 			lipgloss.Top,
 			cursor,
