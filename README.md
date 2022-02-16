@@ -27,7 +27,9 @@ before, so expect this to not be that clean.
 - `left / h` - go back;
 - `space` - hide/unhide post;
 - `o` - open story URL in browser (if any);
-- `O` - open hovered post in browser.
+- `O` - open hovered post in browser;
+- `g` - go to first post in list;
+- `G` - go to last post in list;
 
 ## TODO
 
@@ -37,11 +39,13 @@ before, so expect this to not be that clean.
 - `[x]` - Add ability to hide stories/comments;
 - `[x]` - Represent poll results;
 - `[x]` - Integrate Lip Gloss;
-- `[ ]` - Vertical scroll space thingy;
+- `[x]` - Vertical scroll space thingy;
 - `[ ]` - Find way to include style JSON file in app (instead of re-reading it everytime);
 - `[ ]` - Cool loading indicator;
 - `[ ]` - More colors;
-- `[ ]` - Hovered post border color.
+- `[ ]` - Hovered post border color;
+- `[ ]` - Better tag for loading;
+- `[ ]` - Better pagination.
 
 ## Note
 
