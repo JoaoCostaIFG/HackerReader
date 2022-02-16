@@ -37,6 +37,8 @@ before, so expect this to not be that clean.
 - `[x]` - Add ability to hide stories/comments;
 - `[x]` - Represent poll results;
 - `[x]` - Integrate Lip Gloss;
+- `[ ]` - Vertical scroll space thingy;
+- `[ ]` - Find way to include style JSON file in app (instead of re-reading it everytime);
 - `[ ]` - Cool loading indicator;
 - `[ ]` - More colors;
 - `[ ]` - Hovered post border color.
