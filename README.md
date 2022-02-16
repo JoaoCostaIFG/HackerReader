@@ -40,20 +40,21 @@ before, so expect this to not be that clean.
 - `[x]` - Represent poll results;
 - `[x]` - Integrate Lip Gloss;
 - `[x]` - Vertical scroll space thingy;
-- `[ ]` - Find way to include style JSON file in app (instead of re-reading it everytime);
+- `[x]` - Better tag for loading;
+- `[ ]` - Find way to include style JSON file in app (instead of re-reading it
+  everytime);
 - `[ ]` - Cool loading indicator;
 - `[ ]` - More colors;
 - `[ ]` - Hovered post border color;
-- `[ ]` - Better tag for loading;
 - `[ ]` - Better pagination.
 
 ## Note
 
-- Glamour doesn't currently support commonmark escape chars. There's a
-  small hack to deal with the most common causes of it. See
-  this [issue](https://github.com/charmbracelet/glamour/issues/106);
-- I'm still not sure if I'm doing the JSON stuff curently (specially
-  the array stuff).
+- Glamour doesn't currently support commonmark escape chars. There's a small
+  hack to deal with the most common causes of it. See this
+  [issue](https://github.com/charmbracelet/glamour/issues/106);
+- I'm still not sure if I'm doing the JSON stuff curently (specially the array
+  stuff).
 
 ## License
 

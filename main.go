@@ -15,6 +15,7 @@ import (
 
 	html2md "github.com/JohannesKaufmann/html-to-markdown"
 	"github.com/buger/jsonparser"
+	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
@@ -40,11 +41,11 @@ var (
 	orange    = lipgloss.Color("#FF6600")
 	// title bar
 	titleBar = lipgloss.NewStyle().
-			Background(orange).
-			Foreground(black).
-			Bold(true).
-			PaddingLeft(1).
-			PaddingRight(1)
+		Background(orange).
+		Foreground(black).
+		Bold(true).
+		PaddingLeft(1).
+		PaddingRight(1)
 	// main item
 	mainItemBorder = lipgloss.Border{
 		Top:         "═",
@@ -57,13 +58,13 @@ var (
 		BottomRight: "╝",
 	}
 	mainItem = lipgloss.NewStyle().
-			Border(mainItemBorder).
-			BorderForeground(primary)
+		Border(mainItemBorder).
+		BorderForeground(primary)
 	// check mark
 	checkmark = lipgloss.NewStyle().
-			Foreground(green).
-			Bold(true).
-			Render
+		Foreground(green).
+		Bold(true).
+		Render
 	// list items
 	listItemBorder = lipgloss.Border{
 		Top:         "─",
@@ -76,17 +77,21 @@ var (
 		BottomRight: "┤",
 	}
 	listItem = lipgloss.NewStyle().
-			Border(listItemBorder).
-			BorderForeground(primary)
+		Border(listItemBorder).
+		BorderForeground(primary)
 	// url stuff
 	urlStyle = lipgloss.NewStyle().
-			Foreground(secondary).
-			Italic(true)
+		Foreground(secondary).
+		Italic(true)
 	// other
 	primaryStyle = lipgloss.NewStyle().
-			Foreground(primary)
+		Foreground(primary)
 	secondaryStyle = lipgloss.NewStyle().
-			Foreground(secondary)
+		Foreground(secondary)
+	// spinner
+	spinnerSpinner = spinner.Line
+	spinnerStyle   = lipgloss.NewStyle().
+		Foreground(orange)
 )
 
 type story struct {
@@ -115,6 +120,7 @@ type model struct {
 	cursor     int
 	prevCursor stack.Stack
 	selected   stack.Stack
+	spinner    spinner.Model
 }
 
 func initialModel() model {
@@ -123,7 +129,11 @@ func initialModel() model {
 		cursor:     0,
 		prevCursor: stack.Stack{},
 		selected:   stack.Stack{},
+		spinner:    spinner.New(),
 	}
+	// spinner
+	initModel.spinner.Spinner = spinnerSpinner
+	initModel.spinner.Style = spinnerStyle
 	// add root "story" => top stories are its children
 	initModel.stories[rootStoryId] = story{
 		id:          rootStoryId,
@@ -162,7 +172,7 @@ func fetchTopStories() tea.Msg {
 }
 
 func (m model) Init() tea.Cmd {
-	return fetchTopStories
+	return tea.Batch(fetchTopStories, m.spinner.Tick)
 }
 
 func timestampToString(timestamp int64) string {
@@ -325,6 +335,83 @@ func (m model) batchKidsFetch(st story) tea.Cmd {
 	return tea.Batch(batch...)
 }
 
+func (m model) KeyHandler(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "ctrl+c", "q": // quit
+		return m, tea.Quit
+	case "g":
+		m.cursor = 0
+	case "G":
+		st, _ := m.stories[m.selected.Peek().(int)]
+		m.cursor = len(st.kids) - 1
+	case "down", "j": // point down
+		st, _ := m.stories[m.selected.Peek().(int)]
+		if m.cursor < len(st.kids)-1 {
+			m.cursor++
+			// load missing stories
+			return m, m.batchKidsFetch(st)
+		}
+	case "up", "k": // point up
+		if m.cursor > 0 {
+			m.cursor--
+		}
+	case "enter", "right", "l": // go in
+		parentStory, _ := m.stories[m.selected.Peek().(int)]
+		if len(parentStory.kids) > 0 {
+			// can only go in if there's kids
+			stId := parentStory.kids[m.cursor]
+			st, exists := m.stories[stId]
+			if exists && st.id > 0 {
+				// loaded => we can go in
+				// save previous state for when we go back
+				m.prevCursor.Push(m.cursor)
+				m.selected.Push(stId)
+				// go in and load kids (if needed)
+				m.cursor = 0
+				return m, m.batchKidsFetch(st)
+			}
+		}
+	case "escape", "left", "h": // go back
+		// recover previous state
+		if m.selected.Len() > 1 {
+			// we're nested (rootStory can't be popped)
+			m.cursor = m.prevCursor.Pop().(int)
+			m.selected.Pop()
+		}
+	case " ": // hide/unhide given story
+		parentStory, _ := m.stories[m.selected.Peek().(int)]
+		if len(parentStory.kids) > 0 {
+			st, exists := m.stories[parentStory.kids[m.cursor]]
+			if exists && st.id > 0 {
+				st.hidden = !st.hidden
+				m.stories[parentStory.kids[m.cursor]] = st
+			}
+		}
+	case "o": // open story URL is browser
+		parentStory, _ := m.stories[m.selected.Peek().(int)]
+
+		var targetStory story
+		if m.selected.Len() > 1 {
+			targetStory = parentStory
+		} else if len(parentStory.kids) > 0 {
+			targetStory = m.stories[parentStory.kids[m.cursor]]
+		}
+
+		if len(targetStory.url) > 0 {
+			_ = browser.OpenURL(targetStory.url)
+		}
+	case "O": // open story in browser
+		parentStory, _ := m.stories[m.selected.Peek().(int)]
+		if len(parentStory.kids) > 0 {
+			targetSt := m.stories[parentStory.kids[m.cursor]]
+			targetId := targetSt.id
+			_ = browser.OpenURL(itemUrl + strconv.Itoa(targetId))
+		}
+	}
+
+	return m, nil
+}
+
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case errMsg:
@@ -355,79 +442,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, tea.Batch(batch...)
 		}
+	case spinner.TickMsg:
+		// tick spinner
+		var tickCmd tea.Cmd
+		m.spinner, tickCmd = m.spinner.Update(msg)
+		return m, tickCmd
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "ctrl+c", "q": // quit
-			return m, tea.Quit
-		case "g":
-			m.cursor = 0
-		case "G":
-			st, _ := m.stories[m.selected.Peek().(int)]
-			m.cursor = len(st.kids) - 1
-		case "down", "j": // point down
-			st, _ := m.stories[m.selected.Peek().(int)]
-			if m.cursor < len(st.kids)-1 {
-				m.cursor++
-				// load missing stories
-				return m, m.batchKidsFetch(st)
-			}
-		case "up", "k": // point up
-			if m.cursor > 0 {
-				m.cursor--
-			}
-		case "enter", "right", "l": // go in
-			parentStory, _ := m.stories[m.selected.Peek().(int)]
-			if len(parentStory.kids) > 0 {
-				// can only go in if there's kids
-				stId := parentStory.kids[m.cursor]
-				st, exists := m.stories[stId]
-				if exists && st.id > 0 {
-					// loaded => we can go in
-					// save previous state for when we go back
-					m.prevCursor.Push(m.cursor)
-					m.selected.Push(stId)
-					// go in and load kids (if needed)
-					m.cursor = 0
-					return m, m.batchKidsFetch(st)
-				}
-			}
-		case "escape", "left", "h": // go back
-			// recover previous state
-			if m.selected.Len() > 1 {
-				// we're nested (rootStory can't be popped)
-				m.cursor = m.prevCursor.Pop().(int)
-				m.selected.Pop()
-			}
-		case " ": // hide/unhide given story
-			parentStory, _ := m.stories[m.selected.Peek().(int)]
-			if len(parentStory.kids) > 0 {
-				st, exists := m.stories[parentStory.kids[m.cursor]]
-				if exists && st.id > 0 {
-					st.hidden = !st.hidden
-					m.stories[parentStory.kids[m.cursor]] = st
-				}
-			}
-		case "o": // open story URL is browser
-			parentStory, _ := m.stories[m.selected.Peek().(int)]
-
-			var targetStory story
-			if m.selected.Len() > 1 {
-				targetStory = parentStory
-			} else if len(parentStory.kids) > 0 {
-				targetStory = m.stories[parentStory.kids[m.cursor]]
-			}
-
-			if len(targetStory.url) > 0 {
-				_ = browser.OpenURL(targetStory.url)
-			}
-		case "O": // open story in browser
-			parentStory, _ := m.stories[m.selected.Peek().(int)]
-			if len(parentStory.kids) > 0 {
-				targetSt := m.stories[parentStory.kids[m.cursor]]
-				targetId := targetSt.id
-				_ = browser.OpenURL(itemUrl + strconv.Itoa(targetId))
-			}
-		}
+		return m.KeyHandler(msg)
 	}
 
 	return m, nil
@@ -452,10 +473,14 @@ func (m model) listItemView(st story, highlight bool, selected bool, w int) stri
 
 	if st.id < 0 {
 		// still loading/hasn't started loading
-		return secondaryStyle.Copy().
-			Bold(highlight).
-			MaxWidth(w).
-			Render("Loading... (...)\n.. points by .. .. | .. comments")
+		return lipgloss.JoinHorizontal(lipgloss.Top,
+			m.spinner.View(),
+			" ",
+			secondaryStyle.Copy().
+				Bold(highlight).
+				MaxWidth(w).
+				Render("Loading...\n..."),
+		)
 	}
 
 	switch st.storytype {

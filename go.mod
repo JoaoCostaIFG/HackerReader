@@ -5,6 +5,7 @@ go 1.17
 require (
 	github.com/JohannesKaufmann/html-to-markdown v1.3.3
 	github.com/buger/jsonparser v1.1.1
+	github.com/charmbracelet/bubbles v0.10.3
 	github.com/charmbracelet/bubbletea v0.19.3
 	github.com/charmbracelet/glamour v0.5.0
 	github.com/charmbracelet/lipgloss v0.4.0
