@@ -26,8 +26,7 @@ import (
 const (
 	apiurl          = "https://hacker-news.firebaseio.com/v0"
 	itemUrl         = "https://news.ycombinator.com/item?id="
-	listSize        = 5
-	loadBacklogSize = 10
+	loadBacklogSize = 15
 	rootStoryId     = 0
 	maxWidth        = 120
 )
@@ -88,8 +87,6 @@ var (
 			Foreground(primary)
 	secondaryStyle = lipgloss.NewStyle().
 			Foreground(secondary)
-	// md
-	mdStyle = glamour.WithStylesFromJSONFile("./mdstyle.json")
 )
 
 type story struct {
@@ -566,11 +563,8 @@ func (m model) listItemView(st story, highlight bool, selected bool, w int) stri
 }
 
 func (m model) View() string {
-	w, _, _ := term.GetSize(int(os.Stdout.Fd()))
-	cappedW := w
-	if cappedW > maxWidth {
-		cappedW = maxWidth
-	}
+	w, h, _ := term.GetSize(int(os.Stdout.Fd()))
+	cappedW := min(w, maxWidth)
 
 	// current story (can be root)
 	parentStory, exists := m.stories[m.selected.Peek().(int)]
@@ -579,22 +573,28 @@ func (m model) View() string {
 	}
 
 	// top bar
+	remainingH := h - 1 // call line is occupied
 	ret := titleBar.Width(w).Render("HackerReader")
+	remainingH -= lipgloss.Height(ret)
 
 	// current story (if any selected)
 	if parentStory.id != rootStoryId {
 		mainItemStr := m.listItemView(parentStory, true, true, cappedW-4)
+		mainItemStr = mainItem.
+			Width(cappedW - 2).
+			MaxHeight(remainingH).
+			Render(lipgloss.JoinHorizontal(lipgloss.Top, " ", mainItemStr))
+		remainingH -= lipgloss.Height(mainItemStr)
 		ret = lipgloss.JoinVertical(
 			lipgloss.Left,
 			ret,
-			mainItem.Width(cappedW-2).
-				Render(lipgloss.JoinHorizontal(lipgloss.Top, " ", mainItemStr)),
+			mainItemStr,
 		)
 	}
 
 	// iterate over children
-	starti := max(0, m.cursor-(listSize/2))
-	for i := starti; i < len(parentStory.kids) && i < starti+listSize; i++ {
+	starti := max(0, m.cursor-2)
+	for i := starti; i < len(parentStory.kids) && remainingH > 0; i++ {
 		stId := parentStory.kids[i]
 		st, _ := m.stories[stId]
 		highlight := m.cursor == i // is this the current selected entry?
@@ -615,8 +615,9 @@ func (m model) View() string {
 			orderI,
 			listItemStr,
 		)
+		remainingH -= lipgloss.Height(itemStr) + 2
 
-		if !(i+1 < len(parentStory.kids) && i+1 < starti+listSize) {
+		if !(i+1 < len(parentStory.kids) && remainingH > 0) {
 			// last item
 			listItemBorder.BottomLeft = "└"
 			listItemBorder.BottomRight = "┘"
@@ -625,13 +626,16 @@ func (m model) View() string {
 			listItemBorder.BottomRight = "┤"
 		}
 
+		itemStr = listItem.
+			Width(cappedW-2).
+			MaxHeight(remainingH).
+			Border(listItemBorder, i == starti, true, true).
+			Render(itemStr)
+
 		ret = lipgloss.JoinVertical(
 			lipgloss.Left,
 			ret,
-			listItem.
-				Width(cappedW-2).
-				Border(listItemBorder, i == starti, true, true).
-				Render(itemStr),
+			itemStr,
 		)
 	}
 
@@ -639,11 +643,21 @@ func (m model) View() string {
 }
 
 func main() {
-	p := tea.NewProgram(initialModel())
+	p := tea.NewProgram(
+		initialModel(),
+		tea.WithAltScreen(),
+	)
 	if err := p.Start(); err != nil {
 		fmt.Printf("Alas, there's been an error: %v", err)
 		os.Exit(1)
 	}
+}
+
+func min(a int, b int) int {
+	if a > b {
+		return b
+	}
+	return a
 }
 
 func max(a int, b int) int {
