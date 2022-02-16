@@ -29,7 +29,7 @@ const (
 	itemUrl         = "https://news.ycombinator.com/item?id="
 	loadBacklogSize = 25
 	rootStoryId     = 0
-	maxWidth        = 120
+	maxWidth        = 135
 )
 
 var (
@@ -41,11 +41,11 @@ var (
 	orange    = lipgloss.Color("#FF6600")
 	// title bar
 	titleBar = lipgloss.NewStyle().
-		Background(orange).
-		Foreground(black).
-		Bold(true).
-		PaddingLeft(1).
-		PaddingRight(1)
+			Background(orange).
+			Foreground(black).
+			Bold(true).
+			PaddingLeft(1).
+			PaddingRight(1)
 	// main item
 	mainItemBorder = lipgloss.Border{
 		Top:         "═",
@@ -58,13 +58,13 @@ var (
 		BottomRight: "╝",
 	}
 	mainItem = lipgloss.NewStyle().
-		Border(mainItemBorder).
-		BorderForeground(primary)
+			Border(mainItemBorder).
+			BorderForeground(primary)
 	// check mark
 	checkmark = lipgloss.NewStyle().
-		Foreground(green).
-		Bold(true).
-		Render
+			Foreground(green).
+			Bold(true).
+			Render
 	// list items
 	listItemBorder = lipgloss.Border{
 		Top:         "─",
@@ -77,21 +77,23 @@ var (
 		BottomRight: "┤",
 	}
 	listItem = lipgloss.NewStyle().
-		Border(listItemBorder).
-		BorderForeground(primary)
+			Border(listItemBorder).
+			BorderForeground(primary)
 	// url stuff
 	urlStyle = lipgloss.NewStyle().
-		Foreground(secondary).
-		Italic(true)
+			Foreground(secondary).
+			Italic(true)
 	// other
 	primaryStyle = lipgloss.NewStyle().
-		Foreground(primary)
+			Foreground(primary)
 	secondaryStyle = lipgloss.NewStyle().
-		Foreground(secondary)
+			Foreground(secondary)
 	// spinner
 	spinnerSpinner = spinner.Line
 	spinnerStyle   = lipgloss.NewStyle().
-		Foreground(orange)
+			Foreground(orange)
+	// md
+	markdownStyle = HackerReaderStyleConfig
 )
 
 type story struct {
@@ -431,13 +433,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.stories[msg.id] = msg
 		if msg.storytype == "poll" {
 			var batch []tea.Cmd
-			for _, polloptId := range msg.parts {
-				pollopt, exists := m.stories[polloptId]
+			for _, pollOptId := range msg.parts {
+				pollOpt, exists := m.stories[pollOptId]
 				if !exists {
 					// set loading and start loading
-					pollopt.id = -1
-					m.stories[polloptId] = pollopt
-					batch = append(batch, fetchStory(strconv.Itoa(polloptId)))
+					pollOpt.id = -1
+					m.stories[pollOptId] = pollOpt
+					batch = append(batch, fetchStory(strconv.Itoa(pollOptId)))
 				}
 			}
 			return m, tea.Batch(batch...)
@@ -485,10 +487,11 @@ func (m model) listItemView(st story, highlight bool, selected bool, w int) stri
 
 	switch st.storytype {
 	case "comment":
+		// -1 so wordwrap doesn't feel like ignoring the wrap
 		mdRenderer, _ := glamour.NewTermRenderer(
-			glamour.WithStylesFromJSONFile("./mdstyle.json"),
+			glamour.WithStyles(markdownStyle),
 			glamour.WithEmoji(),
-			glamour.WithWordWrap(w),
+			glamour.WithWordWrap(w-1),
 		)
 		commentTxt, _ := mdRenderer.Render(st.text)
 
@@ -546,9 +549,9 @@ func (m model) listItemView(st story, highlight bool, selected bool, w int) stri
 			if len(st.text) > 0 {
 				// story has text
 				mdRenderer, _ := glamour.NewTermRenderer(
-					glamour.WithStylesFromJSONFile("./mdstyle.json"),
+					glamour.WithStyles(markdownStyle),
 					glamour.WithEmoji(),
-					glamour.WithWordWrap(w),
+					glamour.WithWordWrap(w-1),
 				)
 				storyTxt, _ := mdRenderer.Render(st.text)
 
@@ -637,6 +640,7 @@ func (m model) View() string {
 		row := lipgloss.JoinHorizontal(lipgloss.Top, orderI, cursor)
 		// 2 for borders + 1 for end padding
 		remainingW := cappedW - lipgloss.Width(row) - 3
+		st.text = fmt.Sprintf("%s\n%d", st.text, remainingW)
 		listItemStr := m.listItemView(st, highlight, false, remainingW)
 		itemStr := lipgloss.JoinHorizontal(
 			lipgloss.Top,
@@ -685,11 +689,4 @@ func main() {
 		fmt.Printf("Alas, there's been an error: %v", err)
 		os.Exit(1)
 	}
-}
-
-func min(a int, b int) int {
-	if a > b {
-		return b
-	}
-	return a
 }

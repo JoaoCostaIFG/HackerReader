@@ -33,27 +33,31 @@ before, so expect this to not be that clean.
 
 ## TODO
 
-- `[x]` - Load comments;
-- `[x]` - Navigate comment tree;
-- `[x]` - Add ability to open story URLs in the browser;
-- `[x]` - Add ability to hide stories/comments;
-- `[x]` - Represent poll results;
-- `[x]` - Integrate Lip Gloss;
-- `[x]` - Vertical scroll space thingy;
-- `[x]` - Better tag for loading;
-- `[ ]` - Find way to include style JSON file in app (instead of re-reading it
+- `[X]` - Load comments;
+- `[X]` - Navigate comment tree;
+- `[X]` - Add ability to open story URLs in the browser;
+- `[X]` - Add ability to hide stories/comments;
+- `[X]` - Represent poll results;
+- `[X]` - Integrate Lip Gloss;
+- `[X]` - Vertical scroll space thingy;
+- `[X]` - Better tag for loading;
+- `[X]` - Find way to include style JSON file in app (instead of re-reading it
   everytime);
 - `[ ]` - Cool loading indicator;
 - `[ ]` - More colors;
 - `[ ]` - Hovered post border color;
-- `[ ]` - Better pagination.
+- `[ ]` - Better pagination;
+- `[ ]` - Refactor code.
 
 ## Note
 
 - Glamour doesn't currently support commonmark escape chars. There's a small
   hack to deal with the most common causes of it. See this
   [issue](https://github.com/charmbracelet/glamour/issues/106);
-- I'm still not sure if I'm doing the JSON stuff curently (specially the array
+- Glamour sometimes ignores the text wrapping (max length) when it would only
+  exceed it by a single character. This is undesirable so I pass
+  `withWordWrap(w-1)`;
+- I'm still not sure if I'm doing the JSON stuff currently (specially the array
   stuff).
 
 ## License
