@@ -516,12 +516,17 @@ func (m model) listItemView(st story, highlight bool, selected bool, w int) stri
 				Render(fmt.Sprintf("%d points", st.score)),
 		)
 	default:
-		row := primaryStyle.Copy().
-			Bold(highlight).
-			MaxWidth(w).
-			Render(st.title)
+		// title should wrap if needed, but leave space for domain if possible
+		stTitleStyle := primaryStyle.Copy().Bold(highlight)
+		if len(st.title) > w {
+			stTitleStyle.Width(w)
+		} else {
+			stTitleStyle.MaxWidth(w)
+		}
+		row := stTitleStyle.Render(st.title)
+
 		if len(st.domain) > 0 {
-			// story has an URL
+			// story has a URL
 			remainingW := w - lipgloss.Width(row)
 			if remainingW < len(st.domain)-3 { // 1 space + 2 parentheses
 				// no space => go to next line
