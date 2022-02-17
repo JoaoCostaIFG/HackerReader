@@ -34,10 +34,9 @@ type Post struct {
 	Dead        bool   // true if the item is dead.
 	Deleted     bool   // true, if the item is deleted.
 	//
-	Hidden      bool   // whether the story has been hidden or not
-	TimeStr     string // time in cool string format
-	Domain      string // the URL's domain
-	IsHighlight bool
+	Hidden  bool   // whether the story has been hidden or not
+	TimeStr string // time in cool string format
+	Domain  string // the URL's domain
 }
 
 func New() Post {
@@ -142,8 +141,8 @@ func (st *Post) KidCount() int {
 	return len(st.Kids)
 }
 
-func (st *Post) Highlight(isHighlight bool) {
-	st.IsHighlight = isHighlight
+func (st *Post) HasUrl() bool {
+	return len(st.Url) > 0
 }
 
 // View
@@ -205,7 +204,7 @@ func (st *Post) pollOptView(highlight bool, w int) string {
 	)
 }
 
-func (st *Post) View(highlight bool, selected bool, w int, stories map[int]Post, spinner *spinner.Model) string {
+func (st *Post) View(highlight bool, selected bool, w int, stories map[int]*Post, spinner *spinner.Model) string {
 	if st.Deleted || st.Dead {
 		// deleted story
 		return st.deletedView(highlight, w)

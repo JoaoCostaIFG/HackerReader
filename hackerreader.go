@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/golang-collections/collections/set"
 	"hackerreader/posts"
 	"hackerreader/style"
 	"io"
@@ -29,7 +30,9 @@ const (
 )
 
 type model struct {
-	stories    map[int]posts.Post
+	loaded     bool
+	toLoad     set.Set
+	stories    map[int]*posts.Post
 	cursor     int
 	prevCursor stack.Stack
 	selected   stack.Stack
@@ -38,7 +41,9 @@ type model struct {
 
 func initialModel() model {
 	initModel := model{
-		stories:    make(map[int]posts.Post),
+		loaded:     false,
+		toLoad:     set.Set{},
+		stories:    make(map[int]*posts.Post),
 		cursor:     0,
 		prevCursor: stack.Stack{},
 		selected:   stack.Stack{},
@@ -50,7 +55,7 @@ func initialModel() model {
 	// add root "story" => top stories are its children
 	rootSt := posts.New()
 	rootSt.Id = rootStoryId
-	initModel.stories[rootStoryId] = rootSt
+	initModel.stories[rootStoryId] = &rootSt
 
 	initModel.selected.Push(rootStoryId)
 	return initModel
@@ -83,10 +88,6 @@ func fetchTopStories() tea.Msg {
 	return topStoriesMsg{stories: data}
 }
 
-func (m model) Init() tea.Cmd {
-	return tea.Batch(fetchTopStories, m.spinner.Tick)
-}
-
 func fetchStory(item string) tea.Cmd {
 	return func() tea.Msg {
 		c := &http.Client{Timeout: 10 * time.Second}
@@ -106,19 +107,39 @@ func fetchStory(item string) tea.Cmd {
 	}
 }
 
+func (m model) Init() tea.Cmd {
+	return tea.Batch(fetchTopStories, m.spinner.Tick)
+}
+
 func (m model) batchKidsFetch(st *posts.Post) tea.Cmd {
 	var batch []tea.Cmd
-	for i := m.cursor; i < len(st.Kids) && i < m.cursor+loadBacklogSize; i++ {
+	for i := m.cursor; i < st.KidCount() && i < m.cursor+loadBacklogSize; i++ {
 		stId := st.Kids[i]
-		loadSt, exists := m.stories[stId]
+		_, exists := m.stories[stId]
 		if !exists {
 			// set loading and start loading
-			loadSt.Id = -1
-			m.stories[stId] = loadSt
+			loadSt := posts.New()
+			m.stories[stId] = &loadSt
 			batch = append(batch, fetchStory(strconv.Itoa(stId)))
 		}
 	}
 	return tea.Batch(batch...)
+}
+
+func (m model) setCursor(newCursor int) (tea.Model, tea.Cmd) {
+	st, _ := m.stories[m.selected.Peek().(int)]
+	if newCursor < 0 || newCursor > st.KidCount()-1 || st.KidCount() == 0 {
+		// out of range/no children => do nothing
+		return m, nil
+	}
+
+	var ret tea.Cmd
+	ret = nil
+	if newCursor > m.cursor {
+		ret = m.batchKidsFetch(st)
+	}
+	m.cursor = newCursor
+	return m, ret
 }
 
 func (m model) KeyHandler(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -126,21 +147,14 @@ func (m model) KeyHandler(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+c", "q": // quit
 		return m, tea.Quit
 	case "g":
-		m.cursor = 0
+		return m.setCursor(0)
 	case "G":
 		st, _ := m.stories[m.selected.Peek().(int)]
-		m.cursor = len(st.Kids) - 1
+		return m.setCursor(st.KidCount() - 1)
 	case "down", "j": // point down
-		st, _ := m.stories[m.selected.Peek().(int)]
-		if m.cursor < len(st.Kids)-1 {
-			m.cursor++
-			// load missing stories
-			return m, m.batchKidsFetch(&st)
-		}
+		return m.setCursor(m.cursor + 1)
 	case "up", "k": // point up
-		if m.cursor > 0 {
-			m.cursor--
-		}
+		return m.setCursor(m.cursor - 1)
 	case "enter", "right", "l": // go in
 		parentStory, _ := m.stories[m.selected.Peek().(int)]
 		if len(parentStory.Kids) > 0 {
@@ -153,8 +167,8 @@ func (m model) KeyHandler(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.prevCursor.Push(m.cursor)
 				m.selected.Push(stId)
 				// go in and load kids (if needed)
-				m.cursor = 0
-				return m, m.batchKidsFetch(&st)
+				m.setCursor(0)
+				return m, m.batchKidsFetch(st)
 			}
 		}
 	case "escape", "left", "h": // go back
@@ -176,7 +190,7 @@ func (m model) KeyHandler(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "o": // open story URL is browser
 		parentStory, _ := m.stories[m.selected.Peek().(int)]
 
-		var targetStory posts.Post
+		var targetStory *posts.Post
 		if m.selected.Len() > 1 {
 			targetStory = parentStory
 		} else if len(parentStory.Kids) > 0 {
@@ -204,25 +218,23 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		fmt.Println(msg)
 		return m, tea.Quit
 	case topStoriesMsg:
+		m.loaded = true
+
 		msg.stories[0] = 126809 // TODO remove this poll test
-		rootStory := posts.Post{
-			Id:          rootStoryId,
-			Kids:        msg.stories,
-			Descendants: len(msg.stories),
-		}
-		m.stories[rootStoryId] = rootStory
-		return m, m.batchKidsFetch(&rootStory)
+		rootStory := m.stories[rootStoryId]
+		rootStory.Kids = msg.stories
+		rootStory.Descendants = len(msg.stories)
+		return m, m.batchKidsFetch(rootStory)
 	case posts.Post:
-		// we have a story => we're ready
-		m.stories[msg.Id] = msg
+		m.stories[msg.Id] = &msg
 		if msg.Storytype == "poll" {
 			var batch []tea.Cmd
 			for _, pollOptId := range msg.Parts {
-				pollOpt, exists := m.stories[pollOptId]
+				_, exists := m.stories[pollOptId]
 				if !exists {
 					// set loading and start loading
-					pollOpt.Id = -1
-					m.stories[pollOptId] = pollOpt
+					pollOpt := posts.New()
+					m.stories[pollOptId] = &pollOpt
 					batch = append(batch, fetchStory(strconv.Itoa(pollOptId)))
 				}
 			}
@@ -244,18 +256,25 @@ func (m model) View() string {
 	w, h, _ := term.GetSize(int(os.Stdout.Fd()))
 	cappedW := min(w, maxWidth)
 
-	// current story (can be root)
+	// top bar
+	remainingH := h
+	ret := style.TitleBar.Width(w).Render("HackerReader")
+	remainingH -= lipgloss.Height(ret)
+	if !m.loaded {
+		return lipgloss.JoinVertical(lipgloss.Left,
+			ret,
+			lipgloss.JoinHorizontal(lipgloss.Top,
+				m.spinner.View(), " ", style.SecondaryStyle.Render("Loading..."),
+			),
+		)
+	}
+
+	// current story (if any selected (can be root))
 	parentStory, exists := m.stories[m.selected.Peek().(int)]
 	if !exists {
 		return ""
 	}
 
-	// top bar
-	remainingH := h
-	ret := style.TitleBar.Width(w).Render("HackerReader")
-	remainingH -= lipgloss.Height(ret)
-
-	// current story (if any selected)
 	if parentStory.Id != rootStoryId {
 		mainItemStr := parentStory.View(true, true, cappedW-4, m.stories, &m.spinner)
 		mainItemStr = style.MainItem.
@@ -285,7 +304,6 @@ func (m model) View() string {
 		row := lipgloss.JoinHorizontal(lipgloss.Top, orderI, cursor)
 		// 2 for borders + 1 for end padding
 		remainingW := cappedW - lipgloss.Width(row) - 3
-		st.Text = fmt.Sprintf("%s\n%d", st.Text, remainingW)
 		listItemStr := st.View(highlight, false, remainingW, m.stories, &m.spinner)
 		itemStr := lipgloss.JoinHorizontal(
 			lipgloss.Top,
