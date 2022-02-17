@@ -54,9 +54,8 @@ before, so expect this to not be that clean.
 - Glamour doesn't currently support commonmark escape chars. There's a small
   hack to deal with the most common causes of it. See this
   [issue](https://github.com/charmbracelet/glamour/issues/106);
-- Glamour sometimes ignores the text wrapping (max length) when it would only
-  exceed it by a single character. This is undesirable so I pass
-  `withWordWrap(w-1)`;
+- Glamour text wrapping defines when to start wrapping. If we want a to set a
+  max width by wrapping, we should do 1 less char. I pass `withWordWrap(w-1)`;
 - I'm still not sure if I'm doing the JSON stuff currently (specially the array
   stuff).
 

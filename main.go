@@ -32,70 +32,6 @@ const (
 	maxWidth        = 135
 )
 
-var (
-	// colors
-	primary   = lipgloss.Color("#EEEEEE")
-	secondary = lipgloss.Color("#867f74")
-	black     = lipgloss.Color("#222222")
-	green     = lipgloss.Color("#3ED71C")
-	orange    = lipgloss.Color("#FF6600")
-	// title bar
-	titleBar = lipgloss.NewStyle().
-			Background(orange).
-			Foreground(black).
-			Bold(true).
-			PaddingLeft(1).
-			PaddingRight(1)
-	// main item
-	mainItemBorder = lipgloss.Border{
-		Top:         "═",
-		Bottom:      "═",
-		Left:        "║",
-		Right:       "║",
-		TopLeft:     "╔",
-		TopRight:    "╗",
-		BottomLeft:  "╚",
-		BottomRight: "╝",
-	}
-	mainItem = lipgloss.NewStyle().
-			Border(mainItemBorder).
-			BorderForeground(primary)
-	// check mark
-	checkmark = lipgloss.NewStyle().
-			Foreground(green).
-			Bold(true).
-			Render
-	// list items
-	listItemBorder = lipgloss.Border{
-		Top:         "─",
-		Bottom:      "─",
-		Left:        "│",
-		Right:       "│",
-		TopLeft:     "┌",
-		TopRight:    "┐",
-		BottomLeft:  "├",
-		BottomRight: "┤",
-	}
-	listItem = lipgloss.NewStyle().
-			Border(listItemBorder).
-			BorderForeground(primary)
-	// url stuff
-	urlStyle = lipgloss.NewStyle().
-			Foreground(secondary).
-			Italic(true)
-	// other
-	primaryStyle = lipgloss.NewStyle().
-			Foreground(primary)
-	secondaryStyle = lipgloss.NewStyle().
-			Foreground(secondary)
-	// spinner
-	spinnerSpinner = spinner.Line
-	spinnerStyle   = lipgloss.NewStyle().
-			Foreground(orange)
-	// md
-	markdownStyle = HackerReaderStyleConfig
-)
-
 type story struct {
 	hidden      bool // whether the story has been hidden or not
 	id          int  // -1 when not loaded
@@ -175,41 +111,6 @@ func fetchTopStories() tea.Msg {
 
 func (m model) Init() tea.Cmd {
 	return tea.Batch(fetchTopStories, m.spinner.Tick)
-}
-
-func timestampToString(timestamp int64) string {
-	diff := int64(time.Now().UTC().Sub(time.Unix(timestamp, 0)).Seconds())
-	if diff < 60 {
-		return fmt.Sprintf("%d seconds ago", diff)
-	}
-	diff = diff / 60
-	if diff < 60 {
-		return fmt.Sprintf("%d minutes ago", diff)
-	}
-	diff = diff / 60
-	if diff < 60 {
-		return fmt.Sprintf("%d hours ago", diff)
-	}
-	diff = diff / 24
-	if diff == 1 {
-		return "a day ago"
-	} else if diff < 7 {
-		return fmt.Sprintf("%d days ago", diff)
-	} else if diff < 30 {
-		diff = diff / 7
-		return fmt.Sprintf("%d weeks ago", diff)
-	}
-	diff = diff / 30
-	if diff == 1 {
-		return "a month ago"
-	} else if diff < 12 {
-		return fmt.Sprintf("%d months ago", diff)
-	}
-	diff = diff / 365
-	if diff == 1 {
-		return "a year ago"
-	}
-	return fmt.Sprintf("%d years ago", diff)
 }
 
 func fetchStory(item string) tea.Cmd {
@@ -489,7 +390,7 @@ func (m model) listItemView(st story, highlight bool, selected bool, w int) stri
 	case "comment":
 		// -1 so wordwrap doesn't feel like ignoring the wrap
 		mdRenderer, _ := glamour.NewTermRenderer(
-			glamour.WithStyles(markdownStyle),
+			glamour.WithStyles(mdStyleConfig),
 			glamour.WithEmoji(),
 			glamour.WithWordWrap(w-1),
 		)
@@ -554,7 +455,7 @@ func (m model) listItemView(st story, highlight bool, selected bool, w int) stri
 			if len(st.text) > 0 {
 				// story has text
 				mdRenderer, _ := glamour.NewTermRenderer(
-					glamour.WithStyles(markdownStyle),
+					glamour.WithStyles(mdStyleConfig),
 					glamour.WithEmoji(),
 					glamour.WithWordWrap(w-1),
 				)
