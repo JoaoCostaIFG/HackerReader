@@ -3,8 +3,8 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/golang-collections/collections/set"
 	"hackerreader/posts"
+	"hackerreader/set"
 	"hackerreader/style"
 	"io"
 	"io/ioutil"
@@ -31,22 +31,22 @@ const (
 
 type model struct {
 	loaded     bool
-	toLoad     set.Set
+	toLoad     *set.Set
 	stories    map[int]*posts.Post
 	cursor     int
-	prevCursor stack.Stack
-	selected   stack.Stack
+	prevCursor *stack.Stack
+	selected   *stack.Stack
 	spinner    spinner.Model
 }
 
 func initialModel() model {
 	initModel := model{
 		loaded:     false,
-		toLoad:     set.Set{},
+		toLoad:     set.New(),
 		stories:    make(map[int]*posts.Post),
 		cursor:     0,
-		prevCursor: stack.Stack{},
-		selected:   stack.Stack{},
+		prevCursor: stack.New(),
+		selected:   stack.New(),
 		spinner:    spinner.New(),
 	}
 	// spinner
@@ -64,6 +64,14 @@ func initialModel() model {
 type errMsg struct{ err error }
 
 func (e errMsg) Error() string { return e.err.Error() }
+
+type loadTickMsg struct{}
+
+func (m model) loadTick() tea.Cmd {
+	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
+		return loadTickMsg{}
+	})
+}
 
 type topStoriesMsg struct {
 	stories []int
@@ -108,38 +116,25 @@ func fetchStory(item string) tea.Cmd {
 }
 
 func (m model) Init() tea.Cmd {
-	return tea.Batch(fetchTopStories, m.spinner.Tick)
+	return tea.Batch(
+		fetchTopStories,
+		m.spinner.Tick,
+		m.loadTick(),
+	)
 }
 
-func (m model) batchKidsFetch(st *posts.Post) tea.Cmd {
-	var batch []tea.Cmd
-	for i := m.cursor; i < st.KidCount() && i < m.cursor+loadBacklogSize; i++ {
-		stId := st.Kids[i]
-		_, exists := m.stories[stId]
-		if !exists {
-			// set loading and start loading
-			loadSt := posts.New()
-			m.stories[stId] = &loadSt
-			batch = append(batch, fetchStory(strconv.Itoa(stId)))
-		}
+// Returns the post/story and ques lazy loading if needed
+func (m model) getPost(stId int) *posts.Post {
+	st, exists := m.stories[stId]
+	if !exists {
+		// create new post
+		newSt := posts.New()
+		m.stories[stId] = &newSt
+		// queue for loading
+		m.toLoad.Insert(stId)
+		return &newSt
 	}
-	return tea.Batch(batch...)
-}
-
-func (m model) setCursor(newCursor int) (tea.Model, tea.Cmd) {
-	st, _ := m.stories[m.selected.Peek().(int)]
-	if newCursor < 0 || newCursor > st.KidCount()-1 || st.KidCount() == 0 {
-		// out of range/no children => do nothing
-		return m, nil
-	}
-
-	var ret tea.Cmd
-	ret = nil
-	if newCursor > m.cursor {
-		ret = m.batchKidsFetch(st)
-	}
-	m.cursor = newCursor
-	return m, ret
+	return st
 }
 
 func (m model) KeyHandler(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -147,28 +142,35 @@ func (m model) KeyHandler(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+c", "q": // quit
 		return m, tea.Quit
 	case "g":
-		return m.setCursor(0)
+		m.cursor = 0
 	case "G":
-		st, _ := m.stories[m.selected.Peek().(int)]
-		return m.setCursor(st.KidCount() - 1)
+		st := m.getPost(m.selected.Peek().(int))
+		m.cursor = st.KidCount() - 1
 	case "down", "j": // point down
-		return m.setCursor(m.cursor + 1)
+		st := m.getPost(m.selected.Peek().(int))
+		if m.cursor < st.KidCount()-1 {
+			m.cursor++
+			// TODO
+			// load missing stories
+			//return m, m.batchKidsFetch(st)
+		}
 	case "up", "k": // point up
-		return m.setCursor(m.cursor - 1)
+		if m.cursor > 0 {
+			m.cursor--
+		}
 	case "enter", "right", "l": // go in
-		parentStory, _ := m.stories[m.selected.Peek().(int)]
-		if len(parentStory.Kids) > 0 {
+		parentStory := m.getPost(m.selected.Peek().(int))
+		if parentStory.HasKids() {
 			// can only go in if there's kids
 			stId := parentStory.Kids[m.cursor]
-			st, exists := m.stories[stId]
-			if exists && st.Id > 0 {
+			st := m.getPost(stId)
+			if st.IsLoaded() {
 				// loaded => we can go in
-				// save previous state for when we go back
-				m.prevCursor.Push(m.cursor)
+				m.prevCursor.Push(m.cursor) // save previous state for when we go back
 				m.selected.Push(stId)
-				// go in and load kids (if needed)
-				m.setCursor(0)
-				return m, m.batchKidsFetch(st)
+				m.cursor = 0 // go in and load kids (if needed)
+				// TODO
+				//return m, m.batchKidsFetch(st)
 			}
 		}
 	case "escape", "left", "h": // go back
@@ -179,33 +181,31 @@ func (m model) KeyHandler(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.selected.Pop()
 		}
 	case " ": // hide/unhide given story
-		parentStory, _ := m.stories[m.selected.Peek().(int)]
-		if len(parentStory.Kids) > 0 {
-			st, exists := m.stories[parentStory.Kids[m.cursor]]
-			if exists && st.Id > 0 {
-				st.Hidden = !st.Hidden
-				m.stories[parentStory.Kids[m.cursor]] = st
+		parentStory := m.getPost(m.selected.Peek().(int))
+		if parentStory.HasKids() {
+			st := m.getPost(parentStory.Kids[m.cursor])
+			if st.IsLoaded() {
+				st.ToggleHidden()
 			}
 		}
 	case "o": // open story URL is browser
-		parentStory, _ := m.stories[m.selected.Peek().(int)]
+		parentStory := m.getPost(m.selected.Peek().(int))
 
 		var targetStory *posts.Post
 		if m.selected.Len() > 1 {
 			targetStory = parentStory
-		} else if len(parentStory.Kids) > 0 {
-			targetStory = m.stories[parentStory.Kids[m.cursor]]
+		} else if parentStory.HasKids() {
+			targetStory = m.getPost(parentStory.Kids[m.cursor])
 		}
 
-		if len(targetStory.Url) > 0 {
+		if targetStory != nil && targetStory.HasUrl() {
 			_ = browser.OpenURL(targetStory.Url)
 		}
 	case "O": // open story in browser
-		parentStory, _ := m.stories[m.selected.Peek().(int)]
-		if len(parentStory.Kids) > 0 {
-			targetSt := m.stories[parentStory.Kids[m.cursor]]
-			targetId := targetSt.Id
-			_ = browser.OpenURL(itemUrl + strconv.Itoa(targetId))
+		parentStory := m.getPost(m.selected.Peek().(int))
+		if parentStory.HasKids() {
+			targetSt := m.getPost(parentStory.Kids[m.cursor])
+			_ = browser.OpenURL(itemUrl + strconv.Itoa(targetSt.Id))
 		}
 	}
 
@@ -219,36 +219,36 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case topStoriesMsg:
 		m.loaded = true
-
 		msg.stories[0] = 126809 // TODO remove this poll test
-		rootStory := m.stories[rootStoryId]
+		rootStory := m.getPost(rootStoryId)
 		rootStory.Kids = msg.stories
 		rootStory.Descendants = len(msg.stories)
-		return m, m.batchKidsFetch(rootStory)
+		// TODO
+		//return m, m.batchKidsFetch(rootStory)
 	case posts.Post:
 		m.stories[msg.Id] = &msg
 		if msg.Storytype == "poll" {
-			var batch []tea.Cmd
+			// load poll opts
 			for _, pollOptId := range msg.Parts {
-				_, exists := m.stories[pollOptId]
-				if !exists {
-					// set loading and start loading
-					pollOpt := posts.New()
-					m.stories[pollOptId] = &pollOpt
-					batch = append(batch, fetchStory(strconv.Itoa(pollOptId)))
-				}
+				m.getPost(pollOptId) // will trigger loading if needed
 			}
-			return m, tea.Batch(batch...)
 		}
 	case spinner.TickMsg:
 		// tick spinner
 		var tickCmd tea.Cmd
 		m.spinner, tickCmd = m.spinner.Update(msg)
 		return m, tickCmd
+	case loadTickMsg:
+		var batch []tea.Cmd
+		batch = append(batch, m.loadTick()) // queue next tick
+		for stId := range m.toLoad.Hash {
+			stIdStr := strconv.Itoa(stId.(int))
+			batch = append(batch, fetchStory(stIdStr))
+		}
+		m.toLoad.Clear()
+		return m, tea.Batch(batch...)
 	case tea.KeyMsg:
 		return m.KeyHandler(msg)
-	default:
-		fmt.Println(msg)
 	}
 
 	return m, nil
@@ -272,11 +272,7 @@ func (m model) View() string {
 	}
 
 	// current story (if any selected (can be root))
-	parentStory, exists := m.stories[m.selected.Peek().(int)]
-	if !exists {
-		return ""
-	}
-
+	parentStory := m.getPost(m.selected.Peek().(int))
 	if parentStory.Id != rootStoryId {
 		mainItemStr := parentStory.View(true, true, cappedW-4, m.stories, &m.spinner)
 		mainItemStr = style.MainItem.
@@ -294,7 +290,7 @@ func (m model) View() string {
 	// iterate over children
 	starti := m.cursor
 	for i := starti; i < len(parentStory.Kids) && remainingH > 0; i++ {
-		st, _ := m.stories[parentStory.Kids[i]]
+		st := m.getPost(parentStory.Kids[i])
 		highlight := m.cursor == i // is this the current selected entry?
 
 		orderI := style.PrimaryStyle.Copy().

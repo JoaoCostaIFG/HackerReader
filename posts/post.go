@@ -141,8 +141,24 @@ func (st *Post) KidCount() int {
 	return len(st.Kids)
 }
 
+func (st *Post) HasKids() bool {
+	return len(st.Kids) > 0
+}
+
 func (st *Post) HasUrl() bool {
 	return len(st.Url) > 0
+}
+
+func (st *Post) HasText() bool {
+	return len(st.Text) > 0
+}
+
+func (st *Post) IsLoaded() bool {
+	return st.Id > 0
+}
+
+func (st *Post) ToggleHidden() {
+	st.Hidden = !st.Hidden
 }
 
 // View
