@@ -247,6 +247,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tickCmd
 	case tea.KeyMsg:
 		return m.KeyHandler(msg)
+	default:
+		fmt.Println(msg)
 	}
 
 	return m, nil
