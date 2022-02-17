@@ -21,6 +21,8 @@ before, so expect this to not be that clean.
 ## Controls
 
 - `ctrl+c / q` - quit;
+- `pgdown` - move 10 elements down;
+- `pgup` - move 10 elements up;
 - `down / j` - move cursor down;
 - `up / k` - move cursor up;
 - `enter / right / l` - go in story (select);
@@ -28,8 +30,12 @@ before, so expect this to not be that clean.
 - `space` - hide/unhide post;
 - `o` - open story URL in browser (if any);
 - `O` - open hovered post in browser;
-- `g` - go to first post in list;
-- `G` - go to last post in list;
+- `g / home` - go to first post in list;
+- `G / end` - go to last post in list;
+
+### Mouse
+
+- Scolling up and down with the mouse is supported;
 
 ## TODO
 

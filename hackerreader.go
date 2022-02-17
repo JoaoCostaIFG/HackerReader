@@ -149,11 +149,19 @@ func (m model) KeyHandler(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "ctrl+c", "q": // quit
 		return m, tea.Quit
-	case "g":
+	case "g", "home":
 		m.cursor = 0
-	case "G":
+	case "G", "end":
 		st := m.getPost(m.selected.Peek().(int))
 		m.cursor = st.KidCount() - 1
+	case "pgup":
+		step := min(10, m.cursor)
+		m.cursor -= step
+	case "pgdown":
+		st := m.getPost(m.selected.Peek().(int))
+		step := min(10, st.KidCount()-1-m.cursor)
+		m.cursor += step
+		m.batchKidsFetch(st)
 	case "down", "j": // point down
 		st := m.getPost(m.selected.Peek().(int))
 		if m.cursor < st.KidCount()-1 {
@@ -216,6 +224,23 @@ func (m model) KeyHandler(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m model) MouseHandler(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	switch msg.Type {
+	case tea.MouseWheelDown:
+		st := m.getPost(m.selected.Peek().(int))
+		if m.cursor < st.KidCount()-1 {
+			m.cursor++
+			m.batchKidsFetch(st)
+		}
+	case tea.MouseWheelUp:
+		if m.cursor > 0 {
+			m.cursor--
+		}
+	}
+
+	return m, nil
+}
+
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case errMsg:
@@ -250,8 +275,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.toLoad.Clear()
 		return m, tea.Batch(batch...)
 	case tea.KeyMsg:
-		// handle keybinds
+		// handle keyboard
 		return m.KeyHandler(msg)
+	case tea.MouseMsg:
+		// handle mouse
+		return m.MouseHandler(msg)
 	}
 
 	return m, nil
@@ -348,6 +376,7 @@ func main() {
 	p := tea.NewProgram(
 		initialModel(),
 		tea.WithAltScreen(),
+		tea.WithMouseCellMotion(),
 	)
 	if err := p.Start(); err != nil {
 		fmt.Printf("Alas, there's been an error: %v", err)
