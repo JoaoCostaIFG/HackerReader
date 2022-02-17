@@ -44,11 +44,16 @@ before, so expect this to not be that clean.
 - `[X]` - Find way to include style JSON file in app (instead of re-reading it
   everytime);
 - `[X]` - Cool loading indicator;
-- `[ ]` - Deal with title HTML (can happen but is rare);
+- `[X]` - Better pagination;
+- `[X]` - Refactor code;
+- `[ ]` - Make it so the current post attempts to stay in the middle of page.
 - `[ ]` - More colors;
-- `[ ]` - Hovered post border color;
-- `[ ]` - Better pagination;
-- `[ ]` - Refactor code.
+- `[ ]` - Hovered post border color.
+
+### Maybe TODO
+
+- `[ ]` - Deal with title HTML - API says it is possible but I haven't found a
+  single example yet);
 
 ## Note
 

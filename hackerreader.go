@@ -24,7 +24,7 @@ import (
 const (
 	apiurl          = "https://hacker-news.firebaseio.com/v0"
 	itemUrl         = "https://news.ycombinator.com/item?id="
-	loadBacklogSize = 25
+	loadBacklogSize = 5
 	rootStoryId     = 0
 	maxWidth        = 135
 )
@@ -137,6 +137,14 @@ func (m model) getPost(stId int) *posts.Post {
 	return st
 }
 
+func (m model) batchKidsFetch(st *posts.Post) {
+	// queues some children for loading
+	for i := 0; i < loadBacklogSize && i < st.KidCount(); i++ {
+		childId := st.Kids[i]
+		m.getPost(childId) // will trigger loading if needed
+	}
+}
+
 func (m model) KeyHandler(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "ctrl+c", "q": // quit
@@ -150,9 +158,7 @@ func (m model) KeyHandler(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		st := m.getPost(m.selected.Peek().(int))
 		if m.cursor < st.KidCount()-1 {
 			m.cursor++
-			// TODO
-			// load missing stories
-			//return m, m.batchKidsFetch(st)
+			m.batchKidsFetch(st)
 		}
 	case "up", "k": // point up
 		if m.cursor > 0 {
@@ -169,8 +175,6 @@ func (m model) KeyHandler(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.prevCursor.Push(m.cursor) // save previous state for when we go back
 				m.selected.Push(stId)
 				m.cursor = 0 // go in and load kids (if needed)
-				// TODO
-				//return m, m.batchKidsFetch(st)
 			}
 		}
 	case "escape", "left", "h": // go back
@@ -223,8 +227,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		rootStory := m.getPost(rootStoryId)
 		rootStory.Kids = msg.stories
 		rootStory.Descendants = len(msg.stories)
-		// TODO
-		//return m, m.batchKidsFetch(rootStory)
 	case posts.Post:
 		m.stories[msg.Id] = &msg
 		if msg.Storytype == "poll" {
@@ -248,6 +250,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.toLoad.Clear()
 		return m, tea.Batch(batch...)
 	case tea.KeyMsg:
+		// handle keybinds
 		return m.KeyHandler(msg)
 	}
 
