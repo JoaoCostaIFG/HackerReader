@@ -43,7 +43,8 @@ before, so expect this to not be that clean.
 - `[X]` - Better tag for loading;
 - `[X]` - Find way to include style JSON file in app (instead of re-reading it
   everytime);
-- `[ ]` - Cool loading indicator;
+- `[X]` - Cool loading indicator;
+- `[ ]` - Deal with title HTML (can happen but is rare);
 - `[ ]` - More colors;
 - `[ ]` - Hovered post border color;
 - `[ ]` - Better pagination;

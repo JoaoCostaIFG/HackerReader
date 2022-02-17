@@ -1,4 +1,4 @@
-package main
+package style
 
 import (
 	"github.com/charmbracelet/bubbles/spinner"
@@ -8,20 +8,20 @@ import (
 
 var (
 	// colors
-	primary   = lipgloss.Color("#EEEEEE")
-	secondary = lipgloss.Color("#867f74")
-	black     = lipgloss.Color("#222222")
-	green     = lipgloss.Color("#3ED71C")
-	orange    = lipgloss.Color("#FF6600")
+	Primary   = lipgloss.Color("#EEEEEE")
+	Secondary = lipgloss.Color("#867f74")
+	Black     = lipgloss.Color("#222222")
+	Green     = lipgloss.Color("#3ED71C")
+	Orange    = lipgloss.Color("#FF6600")
 	// title bar
-	titleBar = lipgloss.NewStyle().
-			Background(orange).
-			Foreground(black).
+	TitleBar = lipgloss.NewStyle().
+			Background(Orange).
+			Foreground(Black).
 			Bold(true).
 			PaddingLeft(1).
 			PaddingRight(1)
 	// main item
-	mainItemBorder = lipgloss.Border{
+	MainItemBorder = lipgloss.Border{
 		Top:         "═",
 		Bottom:      "═",
 		Left:        "║",
@@ -31,16 +31,16 @@ var (
 		BottomLeft:  "╚",
 		BottomRight: "╝",
 	}
-	mainItem = lipgloss.NewStyle().
-			Border(mainItemBorder).
-			BorderForeground(primary)
+	MainItem = lipgloss.NewStyle().
+			Border(MainItemBorder).
+			BorderForeground(Primary)
 	// check mark
-	checkmark = lipgloss.NewStyle().
-			Foreground(green).
+	Checkmark = lipgloss.NewStyle().
+			Foreground(Green).
 			Bold(true).
 			Render
 	// list items
-	listItemBorder = lipgloss.Border{
+	ListItemBorder = lipgloss.Border{
 		Top:         "─",
 		Bottom:      "─",
 		Left:        "│",
@@ -50,24 +50,24 @@ var (
 		BottomLeft:  "├",
 		BottomRight: "┤",
 	}
-	listItem = lipgloss.NewStyle().
-			Border(listItemBorder).
-			BorderForeground(primary)
+	ListItem = lipgloss.NewStyle().
+			Border(ListItemBorder).
+			BorderForeground(Primary)
 	// url stuff
-	urlStyle = lipgloss.NewStyle().
-			Foreground(secondary).
+	UrlStyle = lipgloss.NewStyle().
+			Foreground(Secondary).
 			Italic(true)
 	// other
-	primaryStyle = lipgloss.NewStyle().
-			Foreground(primary)
-	secondaryStyle = lipgloss.NewStyle().
-			Foreground(secondary)
+	PrimaryStyle = lipgloss.NewStyle().
+			Foreground(Primary)
+	SecondaryStyle = lipgloss.NewStyle().
+			Foreground(Secondary)
 	// spinner
-	spinnerSpinner = spinner.Line
-	spinnerStyle   = lipgloss.NewStyle().
-			Foreground(orange)
+	SpinnerSpinner = spinner.Line
+	SpinnerStyle   = lipgloss.NewStyle().
+			Foreground(Orange)
 	// md
-	mdStyleConfig = ansi.StyleConfig{
+	MdStyleConfig = ansi.StyleConfig{
 		Document: ansi.StyleBlock{
 			StylePrimitive: ansi.StylePrimitive{
 				Color: stringPtr("#EEEEEE"),

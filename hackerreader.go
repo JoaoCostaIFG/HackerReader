@@ -4,21 +4,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"hackerreader/posts"
-	"html"
+	"hackerreader/style"
 	"io"
 	"io/ioutil"
 	"net/http"
-	"net/url"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
-	html2md "github.com/JohannesKaufmann/html-to-markdown"
-	"github.com/buger/jsonparser"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/golang-collections/collections/stack"
 	"github.com/pkg/browser"
@@ -50,14 +45,13 @@ func initialModel() model {
 		spinner:    spinner.New(),
 	}
 	// spinner
-	initModel.spinner.Spinner = spinnerSpinner
-	initModel.spinner.Style = spinnerStyle
+	initModel.spinner.Spinner = style.SpinnerSpinner
+	initModel.spinner.Style = style.SpinnerStyle
 	// add root "story" => top stories are its children
-	initModel.stories[rootStoryId] = posts.Post{
-		Id:          rootStoryId,
-		Descendants: 0,
-		Kids:        []int{},
-	}
+	rootSt := posts.New()
+	rootSt.Id = rootStoryId
+	initModel.stories[rootStoryId] = rootSt
+
 	initModel.selected.Push(rootStoryId)
 	return initModel
 }
@@ -108,102 +102,11 @@ func fetchStory(item string) tea.Cmd {
 		if err != nil {
 			return errMsg{err}
 		}
-
-		data := posts.Post{}
-
-		paths := [][]string{
-			{"id"},
-			{"by"},
-			{"time"},
-			{"type"},
-			{"title"},
-			{"text"},
-			{"url"},
-			{"score"},
-			{"descendants"},
-			{"kids"},
-			{"parts"},
-			{"poll"},
-			{"parent"},
-			{"dead"},
-			{"deleted"},
-		}
-		jsonparser.EachKey(bodyBytes, func(idx int, value []byte, vt jsonparser.ValueType, err error) {
-			switch idx {
-			case 0:
-				v, _ := jsonparser.ParseInt(value)
-				data.Id = int(v)
-			case 1:
-				v, _ := jsonparser.ParseString(value)
-				data.By = v
-			case 2:
-				v, _ := jsonparser.ParseInt(value)
-				data.Time = int(v)
-				data.Timestr = timestampToString(int64(data.Time))
-			case 3:
-				v, _ := jsonparser.ParseString(value)
-				data.Storytype = v
-			case 4:
-				v, _ := jsonparser.ParseString(value)
-				data.Title = v
-			case 5:
-				v, _ := jsonparser.ParseString(value)
-				data.Text, err = html2md.NewConverter("", true, nil).ConvertString(v)
-				if err != nil {
-					// fallback
-					data.Text = html.UnescapeString(v)
-				} else {
-					data.Text = strings.ReplaceAll(data.Text, "\n\n", "\n")
-					// TODO wait for escape support to remove this
-					// TODO https://github.com/charmbracelet/glamour/issues/106
-					data.Text = strings.ReplaceAll(data.Text, "\\-", "-")
-					data.Text = strings.ReplaceAll(data.Text, "\\>", ">")
-					data.Text = strings.ReplaceAll(data.Text, "\\[", "[")
-					data.Text = strings.ReplaceAll(data.Text, "\\]", "]")
-				}
-			case 6:
-				v, _ := jsonparser.ParseString(value)
-				data.Url = v
-				u, _ := url.Parse(data.Url)
-				parts := strings.Split(u.Hostname(), ".")
-				data.Domain = parts[len(parts)-2] + "." + parts[len(parts)-1]
-			case 7:
-				v, _ := jsonparser.ParseInt(value)
-				data.Score = int(v)
-			case 8:
-				v, _ := jsonparser.ParseInt(value)
-				data.Descendants = int(v)
-			case 9:
-				_, _ = jsonparser.ArrayEach(value, func(value []byte, dataType jsonparser.ValueType, offset int, err error) {
-					v, _ := jsonparser.ParseInt(value)
-					data.Kids = append(data.Kids, int(v))
-				})
-			case 10:
-				_, _ = jsonparser.ArrayEach(value, func(value []byte, dataType jsonparser.ValueType, offset int, err error) {
-					v, _ := jsonparser.ParseInt(value)
-					data.Parts = append(data.Parts, int(v))
-				})
-			case 11:
-				v, _ := jsonparser.ParseInt(value)
-				data.Poll = int(v)
-			case 12:
-				v, _ := jsonparser.ParseInt(value)
-				data.Parent = int(v)
-			case 13:
-				v, _ := jsonparser.ParseBoolean(value)
-				data.Dead = v
-			case 14:
-				v, _ := jsonparser.ParseBoolean(value)
-				data.Deleted = v
-			}
-		}, paths...)
-
-		data.Hidden = false
-		return data
+		return posts.FromJSON(bodyBytes)
 	}
 }
 
-func (m model) batchKidsFetch(st posts.Post) tea.Cmd {
+func (m model) batchKidsFetch(st *posts.Post) tea.Cmd {
 	var batch []tea.Cmd
 	for i := m.cursor; i < len(st.Kids) && i < m.cursor+loadBacklogSize; i++ {
 		stId := st.Kids[i]
@@ -232,7 +135,7 @@ func (m model) KeyHandler(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.cursor < len(st.Kids)-1 {
 			m.cursor++
 			// load missing stories
-			return m, m.batchKidsFetch(st)
+			return m, m.batchKidsFetch(&st)
 		}
 	case "up", "k": // point up
 		if m.cursor > 0 {
@@ -251,7 +154,7 @@ func (m model) KeyHandler(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.selected.Push(stId)
 				// go in and load kids (if needed)
 				m.cursor = 0
-				return m, m.batchKidsFetch(st)
+				return m, m.batchKidsFetch(&st)
 			}
 		}
 	case "escape", "left", "h": // go back
@@ -308,7 +211,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			Descendants: len(msg.stories),
 		}
 		m.stories[rootStoryId] = rootStory
-		return m, m.batchKidsFetch(rootStory)
+		return m, m.batchKidsFetch(&rootStory)
 	case posts.Post:
 		// we have a story => we're ready
 		m.stories[msg.Id] = msg
@@ -337,150 +240,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m model) listItemView(st posts.Post, highlight bool, selected bool, w int) string {
-	if st.Deleted || st.Dead {
-		// deleted story
-		return secondaryStyle.Copy().
-			Bold(highlight).
-			MaxWidth(w).
-			Render(fmt.Sprintf("[deleted] %s", st.Timestr))
-	}
-
-	if st.Hidden && !selected {
-		// hidden post (and not selected (parent))
-		return secondaryStyle.Copy().
-			Bold(highlight).
-			MaxWidth(w).
-			Render(fmt.Sprintf("(hidden) %s %s", st.By, st.Timestr))
-	}
-
-	if st.Id < 0 {
-		// still loading/hasn't started loading
-		return lipgloss.JoinHorizontal(lipgloss.Top,
-			m.spinner.View(),
-			" ",
-			secondaryStyle.Copy().
-				Bold(highlight).
-				MaxWidth(w).
-				Render("Loading...\n..."),
-		)
-	}
-
-	switch st.Storytype {
-	case "comment":
-		// -1 so wordwrap doesn't feel like ignoring the wrap
-		mdRenderer, _ := glamour.NewTermRenderer(
-			glamour.WithStyles(mdStyleConfig),
-			glamour.WithEmoji(),
-			glamour.WithWordWrap(w-1),
-		)
-		commentTxt, _ := mdRenderer.Render(st.Text)
-
-		return lipgloss.JoinVertical(
-			lipgloss.Left,
-			secondaryStyle.Copy().
-				Bold(highlight).
-				MaxWidth(w).
-				Render(st.By+" "+st.Timestr),
-			strings.TrimRight(commentTxt, "\n"),
-		)
-	case "pollopt":
-		return lipgloss.JoinVertical(
-			lipgloss.Left,
-			primaryStyle.Copy().
-				Bold(highlight).
-				Width(w).
-				Render(st.Text),
-			secondaryStyle.Copy().
-				Bold(highlight).
-				MaxWidth(w).
-				Render(fmt.Sprintf("%d points", st.Score)),
-		)
-	default:
-		// title should wrap if needed, but leave space for domain if possible
-		stTitleStyle := primaryStyle.Copy().Bold(highlight)
-		if len(st.Title) > w {
-			stTitleStyle.Width(w)
-		} else {
-			stTitleStyle.MaxWidth(w)
-		}
-		row := stTitleStyle.Render(st.Title)
-
-		if len(st.Domain) > 0 {
-			// story has a URL
-			remainingW := w - lipgloss.Width(row)
-			if remainingW < len(st.Domain)-3 { // 1 space + 2 parentheses
-				// no space => go to next line
-				row = lipgloss.JoinVertical(
-					lipgloss.Left,
-					row,
-					urlStyle.Copy().
-						Bold(highlight).
-						MaxWidth(w).
-						Render(fmt.Sprintf("(%s)", st.Domain)),
-				)
-			} else {
-				row = lipgloss.JoinHorizontal(
-					lipgloss.Top,
-					row,
-					urlStyle.Copy().
-						Bold(highlight).
-						MaxWidth(remainingW).
-						Render(fmt.Sprintf(" (%s)", st.Domain)),
-				)
-			}
-		}
-
-		if selected {
-			if len(st.Text) > 0 {
-				// story has text
-				mdRenderer, _ := glamour.NewTermRenderer(
-					glamour.WithStyles(mdStyleConfig),
-					glamour.WithEmoji(),
-					glamour.WithWordWrap(w-1),
-				)
-				storyTxt, _ := mdRenderer.Render(st.Text)
-
-				row = lipgloss.JoinVertical(
-					lipgloss.Left,
-					row,
-					strings.TrimRight(storyTxt, "\n"),
-				)
-			}
-
-			if st.Storytype == "poll" {
-				// if it is a selected poll => show parts
-				for i := 0; i < len(st.Parts); i++ {
-					polloptId := st.Parts[i]
-					pollopt := m.stories[polloptId]
-					row = lipgloss.JoinVertical(
-						lipgloss.Left,
-						row,
-						lipgloss.JoinHorizontal(
-							lipgloss.Top,
-							"  ",
-							m.listItemView(pollopt, false, false, w-2),
-						),
-					)
-				}
-			}
-		}
-
-		row = lipgloss.JoinVertical(
-			lipgloss.Left,
-			row,
-			secondaryStyle.Copy().
-				Bold(highlight).
-				MaxWidth(w).
-				Render(
-					fmt.Sprintf("%d points by %s %s | %d comments", st.Score, st.By, st.Timestr, st.Descendants),
-				),
-		)
-
-		return row
-	}
-}
-
 func (m model) View() string {
 	w, h, _ := term.GetSize(int(os.Stdout.Fd()))
 	cappedW := min(w, maxWidth)
@@ -493,13 +252,13 @@ func (m model) View() string {
 
 	// top bar
 	remainingH := h
-	ret := titleBar.Width(w).Render("HackerReader")
+	ret := style.TitleBar.Width(w).Render("HackerReader")
 	remainingH -= lipgloss.Height(ret)
 
 	// current story (if any selected)
 	if parentStory.Id != rootStoryId {
-		mainItemStr := m.listItemView(parentStory, true, true, cappedW-4)
-		mainItemStr = mainItem.
+		mainItemStr := parentStory.View(true, true, cappedW-4, m.stories, &m.spinner)
+		mainItemStr = style.MainItem.
 			Width(cappedW - 2).
 			MaxHeight(remainingH).
 			Render(lipgloss.JoinHorizontal(lipgloss.Top, " ", mainItemStr))
@@ -517,17 +276,17 @@ func (m model) View() string {
 		st, _ := m.stories[parentStory.Kids[i]]
 		highlight := m.cursor == i // is this the current selected entry?
 
-		orderI := primaryStyle.Copy().
+		orderI := style.PrimaryStyle.Copy().
 			Bold(highlight).Render(fmt.Sprintf(" %d. ", i))
 		cursor := " "
 		if highlight {
-			cursor = checkmark(">")
+			cursor = style.Checkmark(">")
 		}
 		row := lipgloss.JoinHorizontal(lipgloss.Top, orderI, cursor)
 		// 2 for borders + 1 for end padding
 		remainingW := cappedW - lipgloss.Width(row) - 3
 		st.Text = fmt.Sprintf("%s\n%d", st.Text, remainingW)
-		listItemStr := m.listItemView(st, highlight, false, remainingW)
+		listItemStr := st.View(highlight, false, remainingW, m.stories, &m.spinner)
 		itemStr := lipgloss.JoinHorizontal(
 			lipgloss.Top,
 			cursor,
@@ -541,16 +300,16 @@ func (m model) View() string {
 		}
 		if !(i+1 < len(parentStory.Kids) && nextRemainingH > 0) {
 			// last item
-			listItemBorder.BottomLeft = "└"
-			listItemBorder.BottomRight = "┘"
+			style.ListItemBorder.BottomLeft = "└"
+			style.ListItemBorder.BottomRight = "┘"
 		} else {
-			listItemBorder.BottomLeft = "├"
-			listItemBorder.BottomRight = "┤"
+			style.ListItemBorder.BottomLeft = "├"
+			style.ListItemBorder.BottomRight = "┤"
 		}
-		itemStr = listItem.
+		itemStr = style.ListItem.
 			Width(cappedW-2).
 			MaxHeight(remainingH).
-			Border(listItemBorder, i == starti, true, true).
+			Border(style.ListItemBorder, i == starti, true, true).
 			Render(itemStr)
 
 		remainingH -= lipgloss.Height(itemStr)
