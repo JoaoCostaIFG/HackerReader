@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -24,30 +25,34 @@ import (
 const (
 	apiurl          = "https://hacker-news.firebaseio.com/v0"
 	itemUrl         = "https://news.ycombinator.com/item?id="
-	loadBacklogSize = 5
+	loadBacklogSize = 2
 	rootStoryId     = 0
 	maxWidth        = 135
 )
 
 type model struct {
-	loaded     bool
-	toLoad     *set.Set
-	stories    map[int]*posts.Post
-	cursor     int
-	prevCursor *stack.Stack
-	selected   *stack.Stack
-	spinner    spinner.Model
+	loaded        bool
+	toLoad        *set.Set
+	stories       map[int]*posts.Post
+	cursor        int
+	prevCursor    *stack.Stack
+	selected      *stack.Stack
+	spinner       spinner.Model
+	inFocus       int
+	inFocusCursor int
 }
 
 func initialModel() model {
 	initModel := model{
-		loaded:     false,
-		toLoad:     set.New(),
-		stories:    make(map[int]*posts.Post),
-		cursor:     0,
-		prevCursor: stack.New(),
-		selected:   stack.New(),
-		spinner:    spinner.New(),
+		loaded:        false,
+		toLoad:        set.New(),
+		stories:       make(map[int]*posts.Post),
+		cursor:        0,
+		prevCursor:    stack.New(),
+		selected:      stack.New(),
+		spinner:       spinner.New(),
+		inFocus:       -1,
+		inFocusCursor: 0,
 	}
 	// spinner
 	initModel.spinner.Spinner = style.SpinnerSpinner
@@ -124,7 +129,7 @@ func (m model) Init() tea.Cmd {
 }
 
 // Returns the post/story and ques lazy loading if needed
-func (m model) getPost(stId int) *posts.Post {
+func (m *model) getPost(stId int) *posts.Post {
 	st, exists := m.stories[stId]
 	if !exists {
 		// create new post
@@ -150,14 +155,36 @@ func (m *model) moveCursor(newCursor int) {
 	m.cursor = newCursor
 
 	// queues some children for loading
-	child := m.getPost(st.Kids[m.cursor])
-	for i := 0; i < loadBacklogSize && i < child.KidCount(); i++ {
-		grandChildId := child.Kids[i]
-		m.getPost(grandChildId) // will trigger loading if needed
+	if st.KidCount() > 0 {
+		child := m.getPost(st.Kids[m.cursor])
+		for i := 0; i < loadBacklogSize && i < child.KidCount(); i++ {
+			grandChildId := child.Kids[i]
+			m.getPost(grandChildId) // will trigger loading if needed
+		}
 	}
 }
 
-func (m model) KeyHandler(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m *model) focusKeyHandler(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "ctrl+c", "q": // quit
+		return m, tea.Quit
+	case "down", "j":
+		m.inFocusCursor++
+	case "up", "k":
+		m.inFocusCursor = max(0, m.inFocusCursor-1)
+	case "f":
+		m.inFocus = -1
+		m.inFocusCursor = 0
+	}
+
+	return m, nil
+}
+
+func (m *model) keyHandler(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.inFocus > 0 {
+		return m.focusKeyHandler(msg)
+	}
+
 	switch msg.String() {
 	case "ctrl+c", "q": // quit
 		return m, tea.Quit
@@ -223,12 +250,18 @@ func (m model) KeyHandler(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			targetSt := m.getPost(parentStory.Kids[m.cursor])
 			_ = browser.OpenURL(itemUrl + strconv.Itoa(targetSt.Id))
 		}
+	case "f":
+		parent := m.getPost(m.selected.Peek().(int))
+		if parent.KidCount() > 0 {
+			childId := parent.Kids[m.cursor]
+			m.inFocus = childId
+		}
 	}
 
 	return m, nil
 }
 
-func (m model) MouseHandler(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+func (m *model) MouseHandler(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	switch msg.Type {
 	case tea.MouseWheelDown:
 		m.moveCursor(m.cursor + 1)
@@ -275,7 +308,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(batch...)
 	case tea.KeyMsg:
 		// handle keyboard
-		return m.KeyHandler(msg)
+		return m.keyHandler(msg)
 	case tea.MouseMsg:
 		// handle mouse
 		return m.MouseHandler(msg)
@@ -293,11 +326,23 @@ func (m model) View() string {
 	ret := style.TitleBar.Width(w).Render("HackerReader")
 	remainingH -= lipgloss.Height(ret)
 	if !m.loaded {
+		// app not loaded yet
 		return lipgloss.JoinVertical(lipgloss.Left,
 			ret,
 			lipgloss.JoinHorizontal(lipgloss.Top,
 				m.spinner.View(), " ", style.SecondaryStyle.Render("Loading..."),
 			),
+		)
+	}
+
+	if m.inFocus > 0 {
+		// in focus mode
+		focusedSt := m.getPost(m.inFocus)
+		focusedStr := focusedSt.View(false, true, cappedW, m.stories, &m.spinner)
+		focusedStrSplit := strings.Split(focusedStr, "\n")
+		return lipgloss.JoinVertical(lipgloss.Left,
+			ret,
+			strings.Join(focusedStrSplit[min(m.inFocusCursor, len(focusedStrSplit)-1):], "\n"),
 		)
 	}
 

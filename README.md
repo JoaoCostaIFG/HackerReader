@@ -56,8 +56,9 @@ before, so expect this to not be that clean.
 - `[X]` - More colors;
 - `[X]` - Hovered post border color;
 - `[X]` - Keys from 0-9 to move cursor;
-- `[ ]` - Focus mode (`f` key) - shows only the current hovered post => allows
-  scrolling on it and stuff (like paging);
+- `[X]` - ~~Focus mode (`f` key) - shows only the current hovered post => allows
+  scrolling on it and stuff (like paging).~~ Currently it lets you scroll
+  infinitely down due to some code design problems (refactor stuff again);
 - `[ ]` - Make it so the current post attempts to stay in the middle of page;
 
 ### Maybe TODO
