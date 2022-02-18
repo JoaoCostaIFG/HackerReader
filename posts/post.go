@@ -16,6 +16,10 @@ const (
 	loadingId = -1
 )
 
+var (
+	html2mdConverter = html2md.NewConverter("", true, nil)
+)
+
 type Post struct {
 	// API fields
 	Id          int    // -1 when not loaded
@@ -86,12 +90,12 @@ func FromJSON(bytes []byte) Post {
 			data.Title = v
 		case 5:
 			v, _ := jsonparser.ParseString(value)
-			data.Text, err = html2md.NewConverter("", true, nil).ConvertString(v)
+			data.Text, err = html2mdConverter.ConvertString(v)
 			if err != nil {
 				// fallback
 				data.Text = html.UnescapeString(v)
 			} else {
-				data.Text = strings.ReplaceAll(data.Text, "\n\n", "\n")
+				//data.Text = strings.ReplaceAll(data.Text, "\n\n", "\n")
 				// TODO wait for escape support to remove this
 				// TODO https://github.com/charmbracelet/glamour/issues/106
 				data.Text = strings.ReplaceAll(data.Text, "\\-", "-")

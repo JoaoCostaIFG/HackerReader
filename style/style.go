@@ -8,15 +8,15 @@ import (
 
 var (
 	// colors
-	Primary   = lipgloss.Color("#EEEEEE")
-	Secondary = lipgloss.Color("#867f74")
-	Black     = lipgloss.Color("#222222")
-	Green     = lipgloss.Color("#3ED71C")
-	Orange    = lipgloss.Color("#FF6600")
+	Foreground = lipgloss.Color("#f8f8f2") // #EEEEEE
+	Secondary  = lipgloss.Color("#867f74")
+	Green      = lipgloss.Color("#50fa7b") // #3ED71C
+	Blue       = lipgloss.Color("#8be9fd")
+	HNOrange   = lipgloss.Color("#FF6600")
 	// title bar
 	TitleBar = lipgloss.NewStyle().
-			Background(Orange).
-			Foreground(Black).
+			Background(HNOrange).
+			Foreground(Foreground).
 			Bold(true).
 			PaddingLeft(1).
 			PaddingRight(1)
@@ -33,7 +33,7 @@ var (
 	}
 	MainItem = lipgloss.NewStyle().
 			Border(MainItemBorder).
-			BorderForeground(Primary)
+			BorderForeground(Blue)
 	// check mark
 	Checkmark = lipgloss.NewStyle().
 			Foreground(Green).
@@ -52,20 +52,20 @@ var (
 	}
 	ListItem = lipgloss.NewStyle().
 			Border(ListItemBorder).
-			BorderForeground(Primary)
+			BorderForeground(Foreground)
 	// url stuff
 	UrlStyle = lipgloss.NewStyle().
 			Foreground(Secondary).
 			Italic(true)
 	// other
 	PrimaryStyle = lipgloss.NewStyle().
-			Foreground(Primary)
+			Foreground(Foreground)
 	SecondaryStyle = lipgloss.NewStyle().
 			Foreground(Secondary)
 	// spinner
 	SpinnerSpinner = spinner.Line
 	SpinnerStyle   = lipgloss.NewStyle().
-			Foreground(Orange)
+			Foreground(HNOrange)
 	// md
 	MdStyleConfig = ansi.StyleConfig{
 		Document: ansi.StyleBlock{

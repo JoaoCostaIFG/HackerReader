@@ -353,11 +353,14 @@ func (m model) View() string {
 			style.ListItemBorder.BottomLeft = "├"
 			style.ListItemBorder.BottomRight = "┤"
 		}
-		itemStr = style.ListItem.
+		listItemStyle := style.ListItem.Copy().
 			Width(cappedW-2).
 			MaxHeight(remainingH).
-			Border(style.ListItemBorder, i == starti, true, true).
-			Render(itemStr)
+			Border(style.ListItemBorder, i == starti, true, true)
+		if highlight {
+			listItemStyle.BorderForeground(style.Green)
+		}
+		itemStr = listItemStyle.Render(itemStr)
 
 		remainingH -= lipgloss.Height(itemStr)
 		if remainingH >= 0 {
