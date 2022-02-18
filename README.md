@@ -32,6 +32,7 @@ before, so expect this to not be that clean.
 - `O` - open hovered post in browser;
 - `g / home` - go to first post in list;
 - `G / end` - go to last post in list;
+- `0-9` - go to the selected index in the list.
 
 ### Mouse
 
@@ -54,10 +55,10 @@ before, so expect this to not be that clean.
 - `[X]` - Refactor code;
 - `[X]` - More colors;
 - `[X]` - Hovered post border color;
-- `[ ]` - Keys from 0-9 to move cursor;
-- `[ ]` - Make it so the current post attempts to stay in the middle of page;
+- `[X]` - Keys from 0-9 to move cursor;
 - `[ ]` - Focus mode (`f` key) - shows only the current hovered post => allows
   scrolling on it and stuff (like paging);
+- `[ ]` - Make it so the current post attempts to stay in the middle of page;
 
 ### Maybe TODO
 
@@ -72,8 +73,8 @@ before, so expect this to not be that clean.
   hack to deal with the most common causes of it. See this
   [issue](https://github.com/charmbracelet/glamour/issues/106);
 - Glamour uses [muesli/reflow wordwrap module](https://github.com/muesli/reflow)
-  for word-wrapping. For some reason, the word wrapping isn't being done like
-  I expect. See [Post 30377425](https://news.ycombinator.com/item?id=30377425);
+  for word-wrapping. For some reason, the word wrapping isn't being done like I
+  expect. See [Post 30377425](https://news.ycombinator.com/item?id=30377425);
 - Mouse support disables the ability to select text on the application => I'll
   probably remove it in the future;
 - I'm still not sure if I'm doing the JSON stuff currently (specially the array
