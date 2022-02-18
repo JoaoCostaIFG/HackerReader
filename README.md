@@ -52,12 +52,15 @@ before, so expect this to not be that clean.
 - `[X]` - Cool loading indicator;
 - `[X]` - Better pagination;
 - `[X]` - Refactor code;
-- `[ ]` - Make it so the current post attempts to stay in the middle of page.
-- `[ ]` - More colors;
-- `[ ]` - Hovered post border color.
+- `[X]` - More colors;
+- `[X]` - Hovered post border color;
+- `[ ]` - Make it so the current post attempts to stay in the middle of page;
+- `[ ]` - Focus mode (`f` key) - shows only the current hovered post => allows
+  scrolling on it and stuff (like paging);
 
 ### Maybe TODO
 
+- `[ ]` - Bars to show proportion of votes in polls;
 - `[ ]` - Deal with title HTML - API says it is possible but I haven't found a
   single example yet);
 

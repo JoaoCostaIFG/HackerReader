@@ -358,7 +358,7 @@ func (m model) View() string {
 			MaxHeight(remainingH).
 			Border(style.ListItemBorder, i == starti, true, true)
 		if highlight {
-			listItemStyle.BorderForeground(style.Green)
+			listItemStyle.BorderForeground(style.GreenColor)
 		}
 		itemStr = listItemStyle.Render(itemStr)
 
