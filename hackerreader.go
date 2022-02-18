@@ -137,11 +137,23 @@ func (m model) getPost(stId int) *posts.Post {
 	return st
 }
 
-func (m model) batchKidsFetch(st *posts.Post) {
+func (m *model) moveCursor(newCursor int) {
+	st := m.getPost(m.selected.Peek().(int))
+	if newCursor < 0 {
+		// allows passing -1 to go to last
+		newCursor = st.KidCount() - 1
+	}
+	if newCursor > st.KidCount()-1 {
+		newCursor = st.KidCount() - 1
+	}
+	// move the cursor
+	m.cursor = newCursor
+
 	// queues some children for loading
-	for i := 0; i < loadBacklogSize && i < st.KidCount(); i++ {
-		childId := st.Kids[i]
-		m.getPost(childId) // will trigger loading if needed
+	child := m.getPost(st.Kids[m.cursor])
+	for i := 0; i < loadBacklogSize && i < child.KidCount(); i++ {
+		grandChildId := child.Kids[i]
+		m.getPost(grandChildId) // will trigger loading if needed
 	}
 }
 
@@ -150,28 +162,20 @@ func (m model) KeyHandler(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+c", "q": // quit
 		return m, tea.Quit
 	case "g", "home":
-		m.cursor = 0
+		m.moveCursor(0)
 	case "G", "end":
-		st := m.getPost(m.selected.Peek().(int))
-		m.cursor = st.KidCount() - 1
+		m.moveCursor(-1)
 	case "pgup":
-		step := min(10, m.cursor)
-		m.cursor -= step
+		m.moveCursor(m.cursor - min(10, m.cursor))
 	case "pgdown":
-		st := m.getPost(m.selected.Peek().(int))
-		step := min(10, st.KidCount()-1-m.cursor)
-		m.cursor += step
-		m.batchKidsFetch(st)
+		m.moveCursor(m.cursor + 10)
 	case "down", "j": // point down
-		st := m.getPost(m.selected.Peek().(int))
-		if m.cursor < st.KidCount()-1 {
-			m.cursor++
-			m.batchKidsFetch(st)
-		}
+		m.moveCursor(m.cursor + 1)
 	case "up", "k": // point up
-		if m.cursor > 0 {
-			m.cursor--
-		}
+		m.moveCursor(max(m.cursor-1, 0))
+	case "0", "1", "2", "3", "4", "5", "6", "7", "8", "9":
+		newCursor, _ := strconv.Atoi(msg.String())
+		m.moveCursor(newCursor)
 	case "enter", "right", "l": // go in
 		parentStory := m.getPost(m.selected.Peek().(int))
 		if parentStory.HasKids() {
@@ -227,15 +231,9 @@ func (m model) KeyHandler(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m model) MouseHandler(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	switch msg.Type {
 	case tea.MouseWheelDown:
-		st := m.getPost(m.selected.Peek().(int))
-		if m.cursor < st.KidCount()-1 {
-			m.cursor++
-			m.batchKidsFetch(st)
-		}
+		m.moveCursor(m.cursor + 1)
 	case tea.MouseWheelUp:
-		if m.cursor > 0 {
-			m.cursor--
-		}
+		m.moveCursor(max(m.cursor-1, 0))
 	}
 
 	return m, nil
@@ -249,6 +247,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case topStoriesMsg:
 		m.loaded = true
 		msg.stories[0] = 126809 // TODO remove this poll test
+		msg.stories[1] = 26734955
 		rootStory := m.getPost(rootStoryId)
 		rootStory.Kids = msg.stories
 		rootStory.Descendants = len(msg.stories)

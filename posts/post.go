@@ -90,6 +90,8 @@ func FromJSON(bytes []byte) Post {
 			data.Title = v
 		case 5:
 			v, _ := jsonparser.ParseString(value)
+			// default to C-like syntax
+			v = strings.ReplaceAll(v, "<code>", "<code class=\"language-c\">")
 			data.Text, err = html2mdConverter.ConvertString(v)
 			if err != nil {
 				// fallback
