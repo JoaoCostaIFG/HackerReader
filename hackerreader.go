@@ -38,6 +38,7 @@ type model struct {
 	prevCursor    *stack.Stack
 	selected      *stack.Stack
 	spinner       spinner.Model
+	collapseMain  bool
 	inFocus       int
 	inFocusCursor int
 }
@@ -51,6 +52,7 @@ func initialModel() model {
 		prevCursor:    stack.New(),
 		selected:      stack.New(),
 		spinner:       spinner.New(),
+		collapseMain:  false,
 		inFocus:       -1,
 		inFocusCursor: 0,
 	}
@@ -204,6 +206,7 @@ func (m *model) keyHandler(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		newCursor, _ := strconv.Atoi(msg.String())
 		m.moveCursor(newCursor)
 	case "enter", "right", "l": // go in
+		m.collapseMain = false // disable main collapsing
 		parentStory := m.getPost(m.selected.Peek().(int))
 		if parentStory.HasKids() {
 			// can only go in if there's kids
@@ -217,6 +220,7 @@ func (m *model) keyHandler(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 	case "escape", "left", "h": // go back
+		m.collapseMain = false // disable main collapsing
 		// recover previous state
 		if m.selected.Len() > 1 {
 			// we're nested (rootStory can't be popped)
@@ -250,7 +254,9 @@ func (m *model) keyHandler(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			targetSt := m.getPost(parentStory.Kids[m.cursor])
 			_ = browser.OpenURL(itemUrl + strconv.Itoa(targetSt.Id))
 		}
-	case "f":
+	case "F":
+		m.collapseMain = !m.collapseMain
+	case "f": // enter focus mode on current hover
 		parent := m.getPost(m.selected.Peek().(int))
 		if parent.KidCount() > 0 {
 			childId := parent.Kids[m.cursor]
@@ -387,7 +393,13 @@ func (m model) View() string {
 	// current story (if any selected (can be root))
 	parentStory := m.getPost(m.selected.Peek().(int))
 	if parentStory.Id != rootStoryId {
-		mainItemStr := parentStory.View(true, true, cappedW-4, m.stories, &m.spinner)
+		var mainItemStr string
+		if m.collapseMain {
+			mainItemStr = style.PrimaryStyle.Copy().Bold(true).Render("Collapsed story")
+		} else {
+			mainItemStr = parentStory.View(true, true, cappedW-4, m.stories, &m.spinner)
+		}
+
 		mainItemStr = style.MainItem.
 			Width(cappedW - 2).
 			MaxHeight(remainingH).
@@ -400,6 +412,9 @@ func (m model) View() string {
 		)
 	}
 
+	if !parentStory.HasKids() {
+		return ret
+	}
 	// iterate over children
 	maxItemListH := remainingH
 	itemList := m.listItemView(parentStory, m.cursor, cappedW)

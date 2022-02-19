@@ -33,6 +33,7 @@ before, so expect this to not be that clean.
 - `g / home` - go to first post in list;
 - `G / end` - go to last post in list;
 - `0-9` - go to the selected index in the list;
+- `F` - collapse current main story;
 - `f` - toggle focus mode;
 
 ### Mouse
@@ -58,10 +59,10 @@ before, so expect this to not be that clean.
 - `[X]` - Hovered post border color;
 - `[X]` - Keys from 0-9 to move cursor;
 - `[X]` - Make it so the current post attempts to stay in the middle of page;
+- `[X]` - Collapse main story (maybe `F`);
 - `[ ]` - ~~Focus mode (`f` key) - shows only the current hovered post => allows
   scrolling on it and stuff (like paging).~~ Currently it lets you scroll
   infinitely down due to some code design problems (refactor stuff again);
-- `[ ]` - Collapse main story (maybe `F`);
 
 ### Maybe TODO
 
