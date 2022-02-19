@@ -51,3 +51,10 @@ func domainFromURL(urlStr string) string {
 	parts := strings.Split(u.Hostname(), ".")
 	return parts[len(parts)-2] + "." + parts[len(parts)-1]
 }
+
+func max(a int, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}

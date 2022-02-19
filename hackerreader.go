@@ -463,6 +463,10 @@ func (m model) View() string {
 		}
 		alternator = (alternator + 1) % 2
 	}
+	if cursorBot-cursorTop >= maxItemListH {
+		// special case where only hovered post fits and is too big
+		cursorBot -= cursorBot - cursorTop - maxItemListH
+	}
 
 	return lipgloss.JoinVertical(
 		lipgloss.Left,

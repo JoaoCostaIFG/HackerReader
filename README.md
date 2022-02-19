@@ -60,6 +60,7 @@ before, so expect this to not be that clean.
 - `[X]` - Keys from 0-9 to move cursor;
 - `[X]` - Make it so the current post attempts to stay in the middle of page;
 - `[X]` - Collapse main story (maybe `F`);
+- `[X]` - Bars to show proportion of votes in polls;
 - `[ ]` - ~~Focus mode (`f` key) - shows only the current hovered post => allows
   scrolling on it and stuff (like paging).~~ Currently it lets you scroll
   infinitely down due to some code design problems (refactor stuff again);
@@ -67,7 +68,6 @@ before, so expect this to not be that clean.
 ### Maybe TODO
 
 - `[ ]` - Keybind to list links in screen allowing user to select one to open;
-- `[ ]` - Bars to show proportion of votes in polls;
 - `[ ]` - Deal with title HTML - API says it is possible but I haven't found a
   single example yet);
 

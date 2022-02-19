@@ -301,16 +301,21 @@ func (st *Post) View(highlight bool, selected bool, w int, stories map[int]*Post
 
 			if st.Storytype == "poll" {
 				// if it is a selected poll => show parts
-				for i := 0; i < len(st.Parts); i++ {
-					pollOpt := stories[st.Parts[i]]
-					row = lipgloss.JoinVertical(
-						lipgloss.Left,
-						row,
+				total := 0
+				for _, pollOptId := range st.Parts {
+					pollOpt := stories[pollOptId]
+					total += pollOpt.Score
+				}
+				total = max(1, total)
+				for _, pollOptId := range st.Parts {
+					pollOpt := stories[pollOptId]
+					row = lipgloss.JoinVertical(lipgloss.Left, row,
 						lipgloss.JoinHorizontal(
 							lipgloss.Top,
 							"  ",
 							pollOpt.View(false, false, w-2, stories, spinner),
 						),
+						style.VoteBar("  "+strings.Repeat("\U0001FB86 ", pollOpt.Score*max(10, w/4-1)/total)),
 					)
 				}
 			}

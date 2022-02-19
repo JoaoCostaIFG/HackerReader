@@ -50,6 +50,9 @@ var (
 	MainItem = lipgloss.NewStyle().
 			Border(MainItemBorder).
 			BorderForeground(CyanColor)
+	VoteBar = lipgloss.NewStyle().
+		Foreground(lipgloss.Color(cyan2)).
+		Render
 	// check mark
 	Checkmark = lipgloss.NewStyle().
 			Foreground(GreenColor).
