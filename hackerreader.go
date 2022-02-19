@@ -31,6 +31,9 @@ const (
 )
 
 type model struct {
+	w             int
+	cappedW       int
+	h             int
 	loaded        bool
 	toLoad        *set.Set
 	stories       map[int]*posts.Post
@@ -56,6 +59,9 @@ func initialModel() model {
 		inFocus:       -1,
 		inFocusCursor: 0,
 	}
+	// term size
+	w, h, _ := term.GetSize(int(os.Stdout.Fd()))
+	initModel.setTermSize(w, h)
 	// spinner
 	initModel.spinner.Spinner = style.SpinnerSpinner
 	initModel.spinner.Style = style.SpinnerStyle
@@ -130,6 +136,12 @@ func (m model) Init() tea.Cmd {
 	)
 }
 
+func (m *model) setTermSize(w int, h int) {
+	m.w = w
+	m.h = h
+	m.cappedW = min(w, maxWidth)
+}
+
 // Returns the post/story and ques lazy loading if needed
 func (m *model) getPost(stId int) *posts.Post {
 	st, exists := m.stories[stId]
@@ -178,7 +190,6 @@ func (m *model) focusKeyHandler(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.inFocus = -1
 		m.inFocusCursor = 0
 	}
-
 	return m, nil
 }
 
@@ -288,6 +299,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		rootStory := m.getPost(rootStoryId)
 		rootStory.Kids = msg.stories
 		rootStory.Descendants = len(msg.stories)
+		return m, nil
 	case posts.Post:
 		m.stories[msg.Id] = &msg
 		if msg.Storytype == "poll" {
@@ -296,6 +308,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.getPost(pollOptId) // will trigger loading if needed
 			}
 		}
+		return m, nil
+	case tea.WindowSizeMsg:
+		m.setTermSize(msg.Width, msg.Height)
+		return m, nil
 	case spinner.TickMsg:
 		// tick spinner
 		var tickCmd tea.Cmd
@@ -360,12 +376,9 @@ func (m *model) listItemView(parentStory *posts.Post, i int, w int) string {
 }
 
 func (m model) View() string {
-	w, h, _ := term.GetSize(int(os.Stdout.Fd()))
-	cappedW := min(w, maxWidth)
-
 	// top bar
-	remainingH := h
-	ret := style.TitleBar.Width(w).Render("HackerReader")
+	remainingH := m.h
+	ret := style.TitleBar.Width(m.w).Render("HackerReader")
 	remainingH -= lipgloss.Height(ret)
 	if !m.loaded {
 		// app not loaded yet
@@ -380,7 +393,7 @@ func (m model) View() string {
 	if m.inFocus > 0 {
 		// in focus mode
 		focusedSt := m.getPost(m.inFocus)
-		focusedStr := focusedSt.View(false, true, cappedW, m.stories, &m.spinner)
+		focusedStr := focusedSt.View(false, true, m.cappedW, m.stories, &m.spinner)
 		focusedStrSplit := strings.Split(focusedStr, "\n")
 		return lipgloss.JoinVertical(lipgloss.Left,
 			ret,
@@ -395,11 +408,11 @@ func (m model) View() string {
 		if m.collapseMain {
 			mainItemStr = style.PrimaryStyle.Copy().Bold(true).Render("Collapsed story")
 		} else {
-			mainItemStr = parentStory.View(true, true, cappedW-4, m.stories, &m.spinner)
+			mainItemStr = parentStory.View(true, true, m.cappedW-4, m.stories, &m.spinner)
 		}
 
 		mainItemStr = style.MainItem.
-			Width(cappedW - 2).
+			Width(m.cappedW - 2).
 			MaxHeight(remainingH).
 			Render(lipgloss.JoinHorizontal(lipgloss.Top, " ", mainItemStr))
 		remainingH -= lipgloss.Height(mainItemStr)
@@ -415,7 +428,7 @@ func (m model) View() string {
 	}
 	// iterate over children
 	maxItemListH := remainingH
-	itemList := m.listItemView(parentStory, m.cursor, cappedW)
+	itemList := m.listItemView(parentStory, m.cursor, m.cappedW)
 	cursorTop := 0
 	cursorBot := lipgloss.Height(itemList)
 	remainingH -= cursorBot
@@ -424,7 +437,7 @@ func (m model) View() string {
 		// up
 		i = m.cursor - offset
 		if i >= 0 {
-			itemStr := m.listItemView(parentStory, i, cappedW)
+			itemStr := m.listItemView(parentStory, i, m.cappedW)
 			itemStrHeight := lipgloss.Height(itemStr)
 			cursorTop += itemStrHeight
 			cursorBot += itemStrHeight
@@ -434,7 +447,7 @@ func (m model) View() string {
 		// down
 		i = m.cursor + offset
 		if i < parentStory.KidCount() {
-			itemStr := m.listItemView(parentStory, i, cappedW)
+			itemStr := m.listItemView(parentStory, i, m.cappedW)
 			remainingH -= lipgloss.Height(itemStr)
 			itemList = lipgloss.JoinVertical(lipgloss.Left, itemList, itemStr)
 		}
