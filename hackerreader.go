@@ -205,7 +205,7 @@ func (m *model) keyHandler(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case "g", "home":
 		m.moveCursor(0)
-	case "G", "end":
+	case "G", "alt+[":
 		m.moveCursor(-1)
 	case "pgup":
 		m.moveCursor(m.cursor - min(10, m.cursor))
