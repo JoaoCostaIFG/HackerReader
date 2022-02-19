@@ -317,6 +317,44 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m *model) listItemView(parentStory *posts.Post, i int, w int) string {
+	st := m.getPost(parentStory.Kids[i])
+	highlight := m.cursor == i // is this the current selected entry?
+
+	orderI := style.PrimaryStyle.Copy().
+		Bold(highlight).Render(fmt.Sprintf(" %d. ", i))
+	cursor := " "
+	if highlight {
+		cursor = style.Checkmark(">")
+	}
+	row := lipgloss.JoinHorizontal(lipgloss.Top, orderI, cursor)
+	// 2 for borders + 1 for end padding
+	remainingW := w - lipgloss.Width(row) - 3
+	listItemStr := st.View(highlight, false, remainingW, m.stories, &m.spinner)
+	itemStr := lipgloss.JoinHorizontal(lipgloss.Top,
+		cursor, orderI, listItemStr)
+
+	if i == parentStory.KidCount()-1 {
+		// last item
+		style.ListItemBorder.BottomLeft = "└"
+		style.ListItemBorder.BottomRight = "┘"
+	} else {
+		style.ListItemBorder.BottomLeft = "├"
+		style.ListItemBorder.BottomRight = "┤"
+	}
+	listItemStyle := style.ListItem.Copy().
+		Width(w-2).
+		Border(style.ListItemBorder, i == 0, true, true)
+	if i == m.cursor-1 {
+		listItemStyle.BorderBottomForeground(style.GreenColor)
+	}
+	if highlight {
+		listItemStyle.BorderForeground(style.GreenColor)
+	}
+
+	return listItemStyle.Render(itemStr)
+}
+
 func (m model) View() string {
 	w, h, _ := term.GetSize(int(os.Stdout.Fd()))
 	cappedW := min(w, maxWidth)
@@ -363,60 +401,59 @@ func (m model) View() string {
 	}
 
 	// iterate over children
-	starti := m.cursor
-	for i := starti; i < len(parentStory.Kids) && remainingH > 0; i++ {
-		st := m.getPost(parentStory.Kids[i])
-		highlight := m.cursor == i // is this the current selected entry?
-
-		orderI := style.PrimaryStyle.Copy().
-			Bold(highlight).Render(fmt.Sprintf(" %d. ", i))
-		cursor := " "
-		if highlight {
-			cursor = style.Checkmark(">")
+	maxItemListH := remainingH
+	itemList := m.listItemView(parentStory, m.cursor, cappedW)
+	cursorTop := 0
+	cursorBot := lipgloss.Height(itemList)
+	remainingH -= cursorBot
+	for offset := 1; offset < len(parentStory.Kids)/2+1 && remainingH > 0; offset++ {
+		var i int
+		// up
+		i = m.cursor - offset
+		if i >= 0 {
+			itemStr := m.listItemView(parentStory, i, cappedW)
+			itemStrHeight := lipgloss.Height(itemStr)
+			cursorTop += itemStrHeight
+			cursorBot += itemStrHeight
+			remainingH -= itemStrHeight
+			itemList = lipgloss.JoinVertical(lipgloss.Left, itemStr, itemList)
 		}
-		row := lipgloss.JoinHorizontal(lipgloss.Top, orderI, cursor)
-		// 2 for borders + 1 for end padding
-		remainingW := cappedW - lipgloss.Width(row) - 3
-		listItemStr := st.View(highlight, false, remainingW, m.stories, &m.spinner)
-		itemStr := lipgloss.JoinHorizontal(
-			lipgloss.Top,
-			cursor,
-			orderI,
-			listItemStr,
-		)
-
-		nextRemainingH := remainingH - (lipgloss.Height(itemStr) + 1)
-		if i == starti {
-			nextRemainingH--
-		}
-		if !(i+1 < len(parentStory.Kids) && nextRemainingH > 0) {
-			// last item
-			style.ListItemBorder.BottomLeft = "└"
-			style.ListItemBorder.BottomRight = "┘"
-		} else {
-			style.ListItemBorder.BottomLeft = "├"
-			style.ListItemBorder.BottomRight = "┤"
-		}
-		listItemStyle := style.ListItem.Copy().
-			Width(cappedW-2).
-			MaxHeight(remainingH).
-			Border(style.ListItemBorder, i == starti, true, true)
-		if highlight {
-			listItemStyle.BorderForeground(style.GreenColor)
-		}
-		itemStr = listItemStyle.Render(itemStr)
-
-		remainingH -= lipgloss.Height(itemStr)
-		if remainingH >= 0 {
-			ret = lipgloss.JoinVertical(
-				lipgloss.Left,
-				ret,
-				itemStr,
-			)
+		// down
+		i = m.cursor + offset
+		if i < parentStory.KidCount() {
+			itemStr := m.listItemView(parentStory, i, cappedW)
+			remainingH -= lipgloss.Height(itemStr)
+			itemList = lipgloss.JoinVertical(lipgloss.Left, itemList, itemStr)
 		}
 	}
 
-	return ret
+	itemListSplit := strings.Split(itemList, "\n")
+	changed := 2
+	alternator := 0
+	for cursorBot-cursorTop < maxItemListH && changed > 0 {
+		if alternator == 0 {
+			if cursorTop > 0 {
+				changed++
+				cursorTop--
+			} else {
+				changed--
+			}
+		} else {
+			if cursorBot < len(itemListSplit) {
+				changed++
+				cursorBot++
+			} else {
+				changed--
+			}
+		}
+		alternator = (alternator + 1) % 2
+	}
+
+	return lipgloss.JoinVertical(
+		lipgloss.Left,
+		ret,
+		strings.Join(itemListSplit[cursorTop:cursorBot], "\n"),
+	)
 }
 
 func main() {
