@@ -4,9 +4,9 @@ import (
 	"fmt"
 	html2md "github.com/JohannesKaufmann/html-to-markdown"
 	"github.com/buger/jsonparser"
-	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
+	mySpinner "hackerreader/spinner"
 	"hackerreader/style"
 	"html"
 	"strings"
@@ -41,17 +41,20 @@ type Post struct {
 	Hidden  bool   // whether the story has been hidden or not
 	TimeStr string // time in cool string format
 	Domain  string // the URL's domain
+	//
+	spinner *mySpinner.Spinner
 }
 
-func New() Post {
+func New(spinner *mySpinner.Spinner) Post {
 	return Post{
-		Id:     loadingId,
-		Hidden: false,
+		Id:      loadingId,
+		Hidden:  false,
+		spinner: spinner,
 	}
 }
 
-func FromJSON(bytes []byte) Post {
-	data := Post{}
+func FromJSON(bytes []byte, spinner *mySpinner.Spinner) Post {
+	data := New(spinner)
 
 	paths := [][]string{
 		{"id"},
@@ -181,9 +184,9 @@ func (st *Post) hiddenView(highlight bool, w int) string {
 		Render(fmt.Sprintf("(hidden) %s %s", st.By, st.TimeStr))
 }
 
-func (st *Post) loadingView(highlight bool, w int, spinner *spinner.Model) string {
+func (st *Post) loadingView(highlight bool, w int) string {
 	return lipgloss.JoinHorizontal(lipgloss.Top,
-		spinner.View(),
+		st.spinner.View(),
 		" ",
 		style.SecondaryStyle.Copy().
 			Bold(highlight).
@@ -225,7 +228,7 @@ func (st *Post) pollOptView(highlight bool, w int) string {
 	)
 }
 
-func (st *Post) View(highlight bool, selected bool, w int, stories map[int]*Post, spinner *spinner.Model) string {
+func (st *Post) View(highlight bool, selected bool, w int, stories map[int]*Post) string {
 	if st.Deleted || st.Dead {
 		// deleted story
 		return st.deletedView(highlight, w)
@@ -238,7 +241,7 @@ func (st *Post) View(highlight bool, selected bool, w int, stories map[int]*Post
 
 	if st.Id < 0 {
 		// still loading/hasn't started loading
-		return st.loadingView(highlight, w, spinner)
+		return st.loadingView(highlight, w)
 	}
 
 	switch st.Storytype {
@@ -312,7 +315,7 @@ func (st *Post) View(highlight bool, selected bool, w int, stories map[int]*Post
 						lipgloss.JoinHorizontal(
 							lipgloss.Top,
 							"  ",
-							pollOpt.View(false, false, w-2, stories, spinner),
+							pollOpt.View(false, false, w-2, stories),
 						),
 						style.VoteBar("  "+strings.Repeat("\U0001FB86 ", pollOpt.Score*max(10, w/4-1)/total)),
 					)

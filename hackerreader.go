@@ -3,8 +3,10 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/charmbracelet/bubbles/spinner"
 	"hackerreader/posts"
 	"hackerreader/set"
+	mySpinner "hackerreader/spinner"
 	"hackerreader/style"
 	"io"
 	"io/ioutil"
@@ -14,7 +16,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/golang-collections/collections/stack"
@@ -40,13 +41,16 @@ type model struct {
 	cursor        int
 	prevCursor    *stack.Stack
 	selected      *stack.Stack
-	spinner       spinner.Model
+	spinner       *mySpinner.Spinner
 	collapseMain  bool
 	inFocus       int
 	inFocusCursor int
+	lastFrame     *string
 }
 
 func initialModel() model {
+	lastFrame := ""
+	s := mySpinner.New()
 	initModel := model{
 		loaded:        false,
 		toLoad:        set.New(),
@@ -54,19 +58,17 @@ func initialModel() model {
 		cursor:        0,
 		prevCursor:    stack.New(),
 		selected:      stack.New(),
-		spinner:       spinner.New(),
+		spinner:       &s,
 		collapseMain:  false,
 		inFocus:       -1,
 		inFocusCursor: 0,
+		lastFrame:     &lastFrame, // first frame is empty
 	}
 	// term size
 	w, h, _ := term.GetSize(int(os.Stdout.Fd()))
 	initModel.setTermSize(w, h)
-	// spinner
-	initModel.spinner.Spinner = style.SpinnerSpinner
-	initModel.spinner.Style = style.SpinnerStyle
 	// add root "story" => top stories are its children
-	rootSt := posts.New()
+	rootSt := posts.New(initModel.spinner)
 	rootSt.Id = rootStoryId
 	initModel.stories[rootStoryId] = &rootSt
 
@@ -109,7 +111,7 @@ func fetchTopStories() tea.Msg {
 	return topStoriesMsg{stories: data}
 }
 
-func fetchStory(item string) tea.Cmd {
+func (m *model) fetchStory(item string) tea.Cmd {
 	return func() tea.Msg {
 		c := &http.Client{Timeout: 10 * time.Second}
 		res, err := c.Get(apiurl + "/item/" + item + ".json")
@@ -124,7 +126,7 @@ func fetchStory(item string) tea.Cmd {
 		if err != nil {
 			return errMsg{err}
 		}
-		return posts.FromJSON(bodyBytes)
+		return posts.FromJSON(bodyBytes, m.spinner)
 	}
 }
 
@@ -147,7 +149,7 @@ func (m *model) getPost(stId int) *posts.Post {
 	st, exists := m.stories[stId]
 	if !exists {
 		// create new post
-		newSt := posts.New()
+		newSt := posts.New(m.spinner)
 		m.stories[stId] = &newSt
 		// queue for loading
 		m.toLoad.Insert(stId)
@@ -289,8 +291,24 @@ func (m *model) MouseHandler(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m *model) setRedraw() {
+	*m.lastFrame = ""
+}
+
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.setTermSize(msg.Width, msg.Height)
+		m.setRedraw()
+		return m, nil
+	case tea.KeyMsg:
+		// handle keyboard
+		m.setRedraw()
+		return m.keyHandler(msg)
+	case tea.MouseMsg:
+		// handle mouse
+		m.setRedraw()
+		return m.MouseHandler(msg)
 	case errMsg:
 		fmt.Println(msg)
 		return m, tea.Quit
@@ -299,7 +317,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		rootStory := m.getPost(rootStoryId)
 		rootStory.Kids = msg.stories
 		rootStory.Descendants = len(msg.stories)
+		m.setRedraw()
 		return m, nil
+	case loadTickMsg:
+		var batch []tea.Cmd
+		for stId := range m.toLoad.Hash {
+			stIdStr := strconv.Itoa(stId.(int))
+			batch = append(batch, m.fetchStory(stIdStr))
+		}
+		m.toLoad.Clear()
+		batch = append(batch, m.loadTick()) // queue next tick
+		return m, tea.Batch(batch...)
 	case posts.Post:
 		m.stories[msg.Id] = &msg
 		if msg.Storytype == "poll" {
@@ -308,30 +336,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.getPost(pollOptId) // will trigger loading if needed
 			}
 		}
-		return m, nil
-	case tea.WindowSizeMsg:
-		m.setTermSize(msg.Width, msg.Height)
+		m.setRedraw()
 		return m, nil
 	case spinner.TickMsg:
 		// tick spinner
 		var tickCmd tea.Cmd
-		m.spinner, tickCmd = m.spinner.Update(msg)
-		return m, tickCmd
-	case loadTickMsg:
-		var batch []tea.Cmd
-		batch = append(batch, m.loadTick()) // queue next tick
-		for stId := range m.toLoad.Hash {
-			stIdStr := strconv.Itoa(stId.(int))
-			batch = append(batch, fetchStory(stIdStr))
+		tickCmd = m.spinner.Update(msg)
+		if m.spinner.IsEnabled() {
+			m.setRedraw()
+			m.spinner.Disable()
 		}
-		m.toLoad.Clear()
-		return m, tea.Batch(batch...)
-	case tea.KeyMsg:
-		// handle keyboard
-		return m.keyHandler(msg)
-	case tea.MouseMsg:
-		// handle mouse
-		return m.MouseHandler(msg)
+		return m, tickCmd
 	}
 
 	return m, nil
@@ -350,7 +365,7 @@ func (m *model) listItemView(parentStory *posts.Post, i int, w int) string {
 	row := lipgloss.JoinHorizontal(lipgloss.Top, orderI, cursor)
 	// 2 for borders + 1 for end padding
 	remainingW := w - lipgloss.Width(row) - 3
-	listItemStr := st.View(highlight, false, remainingW, m.stories, &m.spinner)
+	listItemStr := st.View(highlight, false, remainingW, m.stories)
 	itemStr := lipgloss.JoinHorizontal(lipgloss.Top,
 		cursor, orderI, listItemStr)
 
@@ -376,6 +391,10 @@ func (m *model) listItemView(parentStory *posts.Post, i int, w int) string {
 }
 
 func (m model) View() string {
+	if len(*m.lastFrame) > 0 {
+		return *m.lastFrame
+	}
+
 	// top bar
 	remainingH := m.h
 	ret := style.TitleBar.Width(m.w).Render("HackerReader")
@@ -393,7 +412,7 @@ func (m model) View() string {
 	if m.inFocus > 0 {
 		// in focus mode
 		focusedSt := m.getPost(m.inFocus)
-		focusedStr := focusedSt.View(false, true, m.cappedW, m.stories, &m.spinner)
+		focusedStr := focusedSt.View(false, true, m.cappedW, m.stories)
 		focusedStrSplit := strings.Split(focusedStr, "\n")
 		return lipgloss.JoinVertical(lipgloss.Left,
 			ret,
@@ -408,7 +427,7 @@ func (m model) View() string {
 		if m.collapseMain {
 			mainItemStr = style.PrimaryStyle.Copy().Bold(true).Render("Collapsed story")
 		} else {
-			mainItemStr = parentStory.View(true, true, m.cappedW-4, m.stories, &m.spinner)
+			mainItemStr = parentStory.View(true, true, m.cappedW-4, m.stories)
 		}
 
 		mainItemStr = style.MainItem.
@@ -479,11 +498,13 @@ func (m model) View() string {
 		cursorBot -= cursorBot - cursorTop - maxItemListH
 	}
 
-	return lipgloss.JoinVertical(
+	ret = lipgloss.JoinVertical(
 		lipgloss.Left,
 		ret,
 		strings.Join(itemListSplit[cursorTop:cursorBot], "\n"),
 	)
+	*m.lastFrame = ret // save last frame
+	return ret
 }
 
 func main() {

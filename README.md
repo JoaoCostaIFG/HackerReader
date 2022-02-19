@@ -61,10 +61,10 @@ before, so expect this to not be that clean.
 - `[X]` - Make it so the current post attempts to stay in the middle of page;
 - `[X]` - Collapse main story (maybe `F`);
 - `[X]` - Bars to show proportion of votes in polls;
+- `[X]` - There are some problems with the rendering;
 - `[ ]` - ~~Focus mode (`f` key) - shows only the current hovered post => allows
   scrolling on it and stuff (like paging).~~ Currently it lets you scroll
   infinitely down due to some code design problems (refactor stuff again);
-- `[ ]` - There are some problems with the rendering;
 
 ### Maybe TODO
 
