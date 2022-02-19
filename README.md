@@ -9,14 +9,20 @@ I mainly created this as a way to play around with
 [Go](https://go.dev/). It should be noted that I've barely even seen Go code
 before, so expect this to not be that clean.
 
-## Dependencies
+![Main screen](./img/main.png)
 
-- [Bubble Tea](https://github.com/charmbracelet/bubbletea)
-- [Glamour](https://github.com/charmbracelet/glamour)
-- [HackerNews API](https://github.com/HackerNews/API)
-- [html-to-markdown](https://github.com/JohannesKaufmann/html-to-markdown)
-- [JSON parser](https://github.com/buger/jsonparser)
-- [Lip Gloss](https://github.com/charmbracelet/lipgloss)
+![Inside a story](./img/inside_story.png)
+
+## Features
+
+- Can browse the current 500 hot stories and their comments;
+- Allows hiding stories/comments/etc...
+- Focus mode to read a single post in more detail;
+- Cool colors;
+- Syntax highlighting in code blocks;
+- Vim keybinds;
+- Lazy loading of posts;
+- No cache/temp files.
 
 ## Controls
 
@@ -40,7 +46,20 @@ before, so expect this to not be that clean.
 
 - Scolling up and down with the mouse is supported;
 
-## TODO
+## Notes
+
+- Glamour doesn't currently support commonmark escape chars. There's a small
+  hack to deal with the most common causes of it. See this
+  [issue](https://github.com/charmbracelet/glamour/issues/106);
+- Glamour uses [muesli/reflow wordwrap module](https://github.com/muesli/reflow)
+  for word-wrapping. For some reason, the word wrapping isn't being done like I
+  expect. See [Post 30377425](https://news.ycombinator.com/item?id=30377425);
+- Mouse support disables the ability to select text on the application => I'll
+  probably remove it in the future;
+- I'm still not sure if I'm doing the JSON stuff currently (specially the array
+  stuff).
+
+### TODO
 
 - `[X]` - Load comments;
 - `[X]` - Navigate comment tree;
@@ -71,19 +90,17 @@ before, so expect this to not be that clean.
 - `[ ]` - Keybind to list links in screen allowing user to select one to open;
 - `[ ]` - Deal with title HTML - API says it is possible but I haven't found a
   single example yet);
+- `[ ]` - Bubbles keybind thingy;
+- `[ ]` - Focus mode middle of the screen;
 
-## Note
+## Dependencies
 
-- Glamour doesn't currently support commonmark escape chars. There's a small
-  hack to deal with the most common causes of it. See this
-  [issue](https://github.com/charmbracelet/glamour/issues/106);
-- Glamour uses [muesli/reflow wordwrap module](https://github.com/muesli/reflow)
-  for word-wrapping. For some reason, the word wrapping isn't being done like I
-  expect. See [Post 30377425](https://news.ycombinator.com/item?id=30377425);
-- Mouse support disables the ability to select text on the application => I'll
-  probably remove it in the future;
-- I'm still not sure if I'm doing the JSON stuff currently (specially the array
-  stuff).
+- [Bubble Tea](https://github.com/charmbracelet/bubbletea)
+- [Glamour](https://github.com/charmbracelet/glamour)
+- [HackerNews API](https://github.com/HackerNews/API)
+- [html-to-markdown](https://github.com/JohannesKaufmann/html-to-markdown)
+- [JSON parser](https://github.com/buger/jsonparser)
+- [Lip Gloss](https://github.com/charmbracelet/lipgloss)
 
 ## License
 
