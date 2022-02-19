@@ -64,6 +64,7 @@ before, so expect this to not be that clean.
 - `[ ]` - ~~Focus mode (`f` key) - shows only the current hovered post => allows
   scrolling on it and stuff (like paging).~~ Currently it lets you scroll
   infinitely down due to some code design problems (refactor stuff again);
+- `[ ]` - There are some problems with the rendering;
 
 ### Maybe TODO
 

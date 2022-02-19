@@ -285,8 +285,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case topStoriesMsg:
 		m.loaded = true
-		msg.stories[0] = 126809 // TODO remove this poll test
-		msg.stories[1] = 26734955
 		rootStory := m.getPost(rootStoryId)
 		rootStory.Kids = msg.stories
 		rootStory.Descendants = len(msg.stories)
@@ -421,7 +419,7 @@ func (m model) View() string {
 	cursorTop := 0
 	cursorBot := lipgloss.Height(itemList)
 	remainingH -= cursorBot
-	for offset := 1; offset < len(parentStory.Kids)/2+1 && remainingH > 0; offset++ {
+	for offset := 1; offset < max(m.cursor, len(parentStory.Kids)) && remainingH > 0; offset++ {
 		var i int
 		// up
 		i = m.cursor - offset
@@ -463,7 +461,7 @@ func (m model) View() string {
 		}
 		alternator = (alternator + 1) % 2
 	}
-	if cursorBot-cursorTop >= maxItemListH {
+	if cursorBot-cursorTop > maxItemListH {
 		// special case where only hovered post fits and is too big
 		cursorBot -= cursorBot - cursorTop - maxItemListH
 	}
