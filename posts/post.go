@@ -97,7 +97,6 @@ func FromJSON(bytes []byte) Post {
 				// fallback
 				data.Text = html.UnescapeString(v)
 			} else {
-				//data.Text = strings.ReplaceAll(data.Text, "\n\n", "\n")
 				// TODO wait for escape support to remove this
 				// TODO https://github.com/charmbracelet/glamour/issues/106
 				data.Text = strings.ReplaceAll(data.Text, "\\-", "-")
