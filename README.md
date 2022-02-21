@@ -57,7 +57,9 @@ before, so expect this to not be that clean.
 - Mouse support disables the ability to select text on the application => I'll
   probably remove it in the future;
 - I'm still not sure if I'm doing the JSON stuff currently (specially the array
-  stuff).
+  stuff);
+- [This](https://en.wikipedia.org/wiki/Box-drawing_character) is a cool resource
+  for box-drawing characters (borders, etc...).
 
 ### TODO
 
@@ -96,6 +98,7 @@ before, so expect this to not be that clean.
 ## Dependencies
 
 - [Bubble Tea](https://github.com/charmbracelet/bubbletea)
+- [Bubbles](https://github.com/charmbracelet/bubbles)
 - [Glamour](https://github.com/charmbracelet/glamour)
 - [HackerNews API](https://github.com/HackerNews/API)
 - [html-to-markdown](https://github.com/JohannesKaufmann/html-to-markdown)
